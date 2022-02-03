@@ -1,10 +1,10 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='magis_sigdial2020',
     version='1.0.0',
-    packages=['magis_sigdial2020',],
-    license='MIT',
+    packages=find_packages(),
+    license='MIT'
 )
 
 setup(
