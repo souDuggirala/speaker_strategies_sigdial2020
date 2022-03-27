@@ -72,7 +72,7 @@ def main():
     
     if os.path.exists(hparams.unnormalized_filepath):
         print("Unnormalized exists; loading")
-        teacher_phi = np.load(unnormalized_filepath)
+        teacher_phi = np.load(hparams.unnormalized_filepath)
     else:
         print("Unnormalized does not exist; making")
         teacher_phi = []
