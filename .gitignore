@@ -17,3 +17,4 @@ configs/*.yml
 *.csv
 *.ann
 *.npy
+**/.DS_Store
