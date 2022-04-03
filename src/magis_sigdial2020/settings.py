@@ -21,6 +21,7 @@ XKCD_DATASET_FILES = {
     "annotations": os.path.join(DATA_ROOT, "xkcd/annotations.csv")
 }
 XKCD_VOCAB = os.path.join(DATA_ROOT, "xkcd/vocab.json")
+COMP_XKCD_VOCAB = os.path.join(DATA_ROOT, "xkcd/comp_vocab.json")
 
 # Colors in Context dataset files
 CIC_DATA_CSV = os.path.join(DATA_ROOT, "filteredCorpus.csv")
