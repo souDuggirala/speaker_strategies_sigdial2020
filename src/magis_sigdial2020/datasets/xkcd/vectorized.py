@@ -16,6 +16,11 @@ def get_xkcd_vocab():
     with open(settings.XKCD_VOCAB, "r") as fp:
         return Vocabulary(token_to_idx=json.load(fp))
 
+#returns shortened vocab of color words for compositional model instead of vocab for full color descriptions
+def get_comp_xkcd_vocab():
+    with open(settings.COMP_XKCD_VOCAB, "r") as fp:
+        return Vocabulary(token_to_idx=json.load(fp))
+
 
 def simple_stopwatch(display_string="[{i}] Elapsed: {elapsed_tick:0.2f}s ({elapsed_total:0.2f}s)", enable=False):
     status = {
@@ -211,3 +216,82 @@ class XKCD(Dataset):
 
     def get_num_batches(self, batch_size):
         return len(self) // batch_size
+
+#make this subclass from XKCD instead, because only init and __getitem__ are slightly different
+class CompositionalXKCD(XKCD):
+    def __init__(self, matrix_filename, annotation_filename, coordinate_system='hue', 
+                 subset_function=lambda x: x, fft_resolution=3, timeit=False):
+        
+        #!redoes train, val, test df creation after XKCD.__init__() does them, if this is a problem, don't subclass
+
+        super().__init__(matrix_filename, annotation_filename, coordinate_system='hue', 
+                 subset_function=lambda x: x, fft_resolution=3, timeit=False)
+
+        self.color_vocab = get_comp_xkcd_vocab()
+
+        col2index = {col:idx for idx, col in enumerate(self.annotations.columns)}
+
+        self.train_df = self.annotations[self.annotations.split=='train']
+        self.train_size = len(self.train_df)
+        self.train_fast = []
+        for row_values in self.train_df.values:
+            row_index = row_values[col2index['row_index']]
+            color_name = row_values[col2index['color_name']]
+            color_words = color_name.split() #list of words
+            color_words.reverse() #make so that the head word is first and modifiers follow
+            label_indices = [self.color_vocab._token_to_idx[color_word] for color_word in color_words]
+            #possibly some padding with zeros needed for training
+            self.train_fast.append((row_index, label_indices)) #might need to change this, because indices should be in input too...have to find out what train_fast is
+
+        self.val_df = self.annotations[self.annotations.split=='val']
+        self.validation_size = len(self.val_df)
+        self.val_fast = []
+        for row_values in self.val_df.values:
+            row_index = row_values[col2index['row_index']]
+            color_name = row_values[col2index['color_name']]
+            color_words = color_name.split() #list of words
+            color_words.reverse() #make so that the head word is first and modifiers follow
+            label_indices = [self.color_vocab._token_to_idx[color_word] for color_word in color_words]
+            #possibly some padding with zeros needed for training
+            self.val_fast.append((row_index, label_indices)) 
+
+
+        self.test_df = self.annotations[self.annotations.split=='test']
+        self.test_size = len(self.test_df)
+        self.test_fast = []
+        for row_values in self.test_df.values:
+            row_index = row_values[col2index['row_index']]
+            color_name = row_values[col2index['color_name']]
+            color_words = color_name.split() #list of words
+            color_words.reverse() #make so that the head word is first and modifiers follow
+            label_indices = [self.color_vocab._token_to_idx[color_word] for color_word in color_words]
+            #possibly some padding with zeros needed for training
+            self.test_fast.append((row_index, label_indices))
+
+        self._lookup_dict = {'train': (self.train_df, 
+                                       self.train_size, 
+                                       self.train_fast), 
+                             'val': (self.val_df, 
+                                     self.validation_size, 
+                                     self.val_fast), 
+                             'test': (self.test_df, 
+                                      self.test_size, 
+                                      self.test_fast)}
+
+        self.set_split('train')
+
+    def __getitem__(self, index):
+        if self._use_fast:
+            row_index, label_indices = self._target_fast[index]
+            vector = self.data_matrix[row_index]
+        else:
+            item = self._target_df.iloc[index]
+            vector = self.data_matrix[item.row_index]
+            color_words = item.color_name.split() #list of words
+            color_words.reverse() #make so that the head word is first and modifiers follow
+            label_indices = [self.color_vocab.lookup_token(color_word) for color_word in color_words]
+        return {
+            'x_color_value': vector, 
+            'y_color_name': label_indices,
+            'data_index': index
+        }
