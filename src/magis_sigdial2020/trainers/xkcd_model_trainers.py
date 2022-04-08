@@ -1,6 +1,7 @@
 from magis_sigdial2020.datasets.xkcd import XKCD, TeacherGuidedXKCD
+from magis_sigdial2020.datasets.xkcd.vectorized import CompositionalXKCD #not sure why XKCD and TeacherGuidedXKCD are able to be accessed through xkcd
 from magis_sigdial2020.metrics import compute_accuracy, compute_perplexity
-from magis_sigdial2020.models.xkcd_model import XKCDModel
+from magis_sigdial2020.models.xkcd_model import XKCDModel, CompositionalXKCDModel
 from magis_sigdial2020.trainers.base_trainer import BaseTrainer
 import torch
 import torch.nn as nn
@@ -96,6 +97,46 @@ class UncalibratedXKCDModelTrainer(BaseTrainer):
     def compute_model_output(self, batch_dict):
         return self.model(batch_dict['x_color_value'])
 
+    def compute_loss(self, batch_dict, model_output):
+        return self._ce_loss(model_output['log_word_score'],
+                             batch_dict['y_color_name'])
+
+    def compute_metrics(self, batch_dict, model_output):
+        return {
+            "perplexity": compute_perplexity(model_output['log_word_score'],
+                                             batch_dict['y_color_name'],
+                                             True),
+            "accuracy": compute_accuracy(model_output['log_word_score'],
+                                         batch_dict['y_color_name'])
+        }
+
+class CompositionalXKCDModelTrainer(BaseTrainer):
+
+    def make_dataset(self):
+        dataset = CompositionalXKCD.from_settings(coordinate_system=self.hparams.xkcd_coordinate_system)
+        self.hparams.input_size = dataset[0]['x_color_value'].shape[0]
+        self.hparams.vocab_size = len(dataset.color_vocab)
+        self.hparams.seq_len = 4 #change to make more general, or need to make sure all index lists from dataset are this seq_len
+        return dataset
+
+    def make_model(self):
+        return CompositionalXKCDModel(
+            input_size=self.hparams.input_size,
+            lstm_size=self.hparams.lstm_size,
+            num_lstm_layers=self.hparams.num_lstm_layers,
+            embedding_dim=self.hparams.embedding_dim,
+            vocab_size=self.hparams.vocab_size,
+            seq_len=self.hparams.seq_len
+        )
+
+    def setup_loss(self):
+        self._ce_loss = nn.CrossEntropyLoss(reduction='mean')
+
+    def compute_model_output(self, batch_dict):
+        return self.model(batch_dict['x_color_value'], batch_dict['y_color_name'])
+
+    #later incorporate VAE regularization
+    #have to think more about loss
     def compute_loss(self, batch_dict, model_output):
         return self._ce_loss(model_output['log_word_score'],
                              batch_dict['y_color_name'])

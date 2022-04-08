@@ -110,3 +110,76 @@ class XKCDModelWithRGC(XKCDModel):
             'word_score': word_score,
             'S0_probability': S0_probability
         }
+
+'''Could not find the LSTM model in standfordnlp/color-describer repo'''
+class CompositionalXKCDModel(nn.Module):
+    MODEL_TYPE = 'semantic'
+    
+    @classmethod
+    def make(cls, hparams, reload=False, eval_mode=False):
+        model = cls(
+            input_size=hparams.input_size,
+            lstm_size=hparams.lstm_size,
+            num_lstm_layers=hparams.num_lstm_layers,
+            embedding_dim=hparams.embedding_dim,
+            vocab_size=hparams.vocab_size,
+            seq_len=hparams.seq_len
+        )
+        if reload:
+            reload_trial_model(model, hparams.trial_path)
+        if eval_mode:
+            model = model.eval()
+        return model
+    
+    
+    #input_size is the size of the transformed color vector (like it is in XKCDModel)
+    def __init__(self, input_size, lstm_size, num_lstm_layers, embedding_dim, vocab_size, seq_len):
+        super(CompositionalXKCDModel, self).__init__()
+        self.input_size = input_size
+        self.lstm_size = lstm_size
+        self.num_lstm_layers = num_lstm_layers
+        self.embedding_dim = embedding_dim
+        self.vocab_size = vocab_size
+        self.seq_len = seq_len
+
+        self.embedding = nn.Embedding(
+            num_embeddings = self.vocab_size, 
+            embedding_dim = self.embedding_dim)
+        self.lstm = nn.LSTM(
+            input_size = self.input_size + self.embedding_dim, 
+            hidden_size = self.lstm_size, 
+            num_layers = self.num_lstm_layers, 
+            dropout = 0.2)
+        self.fc = nn.Linear(self.lstm_size, self.vocab_size) #!is the input size really lstm_size? i.e. is the output of the lstm lstm_size?
+    
+    #Teacher forcing: all correct color words inputted during training, not taken from previous step
+    #how to deal with evaluation? A separate piece of code using the trained weights and a loop
+        #or incorporate loop here somehow
+    def forward(self, x_input, y_color_name):
+        output = {}
+        
+        embedded = self.embedding(y_color_name) 
+        
+        #expand x_input and concat to embedded y_color_name
+            #embedded shape (batch_size, seq_len, embedding_dim)
+            #x_input shape (batch_size, input_size) --> (batch_size, seq_len, input_size)
+            #concatenated shape (batch_size, seq_len, input_size + embedding_dim)
+        x_input = torch.unsqueeze(x_input,1)
+        x_input.expand(-1, self.seq_len, -1)
+        lstm_input = torch.cat((embedded, x_input), -1)
+
+        #pass through LSTM and FC layers to get logits
+        lstm_output = self.lstm(lstm_input)
+        logit = self.fc(lstm_output)
+
+        output['phi_logit'] = logit
+
+        #copied this from XKCDModel, and though it makes sense to me, haven't fully through through all the math w.r.t. new model's loss
+            #unsure about sigmoid part
+        output['log_word_score'] = (
+            torch_safe_log(torch.sigmoid(output['phi_logit'])) 
+        )
+        output['word_score'] = torch.exp(output['log_word_score'])
+        output['S0_probability'] = F.softmax(output['log_word_score'], dim=1)
+
+        return output
