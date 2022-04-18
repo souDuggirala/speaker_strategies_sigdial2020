@@ -117,7 +117,7 @@ class Context:
             object_indices.rotate(-1)
             
     def plot(self, target=0, axes=None):
-        from magis.utils.plot import plot_three
+        from magis_sigdial2020.utils.plot import plot_three
         if self.cic is None:
             raise Exception("Set cic first")
         if target >= len(self.batch_dict['row_index']):
