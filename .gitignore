@@ -18,3 +18,9 @@ configs/*.yml
 *.ann
 *.npy
 **/.DS_Store
+src/build
+src/dist
+.vscode/
+
+lab/XKCD_model/scripts/test_sql.py
+src/magis_sigdial2020/testing_code.py
