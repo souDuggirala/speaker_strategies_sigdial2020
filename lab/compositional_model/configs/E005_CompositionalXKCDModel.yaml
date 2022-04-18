@@ -1,0 +1,26 @@
+# Experiment Hyper Params
+experiment_name: CompositionalModel
+trial_name: testing_version
+root_output_path: "/Users/soumyadugg/speaker_strategies_sigdial2020/lab/compositional_model/logs"
+xkcd_coordinate_system: fft
+
+# Training Hyper Params
+seed: 1337
+num_epochs: 200
+batch_size: 256
+checkpoint_metric: perplexity
+learning_rate: 0.01
+patience_threshold: 4
+# overall l2
+weight_decay: 0.000
+
+# Model Hyper Params
+input_size: -1
+lstm_size: 32
+num_lstm_layers: 2
+embedding_dim: 10
+vocab_size: -1
+max_seq_len: 6
+
+# Runtime params
+cuda: false
