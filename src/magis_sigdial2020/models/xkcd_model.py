@@ -8,6 +8,7 @@ from magis_sigdial2020.utils.nn import new_parameter
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 
 torch_safe_log = lambda x: torch.log(torch.clamp(x, 1e-20, 1e7))
@@ -111,7 +112,7 @@ class XKCDModelWithRGC(XKCDModel):
             'S0_probability': S0_probability
         }
 
-'''Could not find the LSTM model in standfordnlp/color-describer repo'''
+#Could not find the LSTM model in standfordnlp/color-describer repo
 class CompositionalXKCDModel(nn.Module):
     MODEL_TYPE = 'semantic'
     
@@ -123,7 +124,7 @@ class CompositionalXKCDModel(nn.Module):
             num_lstm_layers=hparams.num_lstm_layers,
             embedding_dim=hparams.embedding_dim,
             vocab_size=hparams.vocab_size,
-            seq_len=hparams.seq_len
+            max_seq_len=hparams.max_seq_len
         )
         if reload:
             reload_trial_model(model, hparams.trial_path)
@@ -133,14 +134,14 @@ class CompositionalXKCDModel(nn.Module):
     
     
     #input_size is the size of the transformed color vector (like it is in XKCDModel)
-    def __init__(self, input_size, lstm_size, num_lstm_layers, embedding_dim, vocab_size, seq_len):
+    def __init__(self, input_size, lstm_size, num_lstm_layers, embedding_dim, vocab_size, max_seq_len):
         super(CompositionalXKCDModel, self).__init__()
         self.input_size = input_size
         self.lstm_size = lstm_size
         self.num_lstm_layers = num_lstm_layers
         self.embedding_dim = embedding_dim
         self.vocab_size = vocab_size
-        self.seq_len = seq_len
+        self.max_seq_len = max_seq_len
 
         self.embedding = nn.Embedding(
             num_embeddings = self.vocab_size, 
@@ -149,27 +150,29 @@ class CompositionalXKCDModel(nn.Module):
             input_size = self.input_size + self.embedding_dim, 
             hidden_size = self.lstm_size, 
             num_layers = self.num_lstm_layers, 
-            dropout = 0.2)
+            dropout = 0.2,
+            batch_first = True)
         self.fc = nn.Linear(self.lstm_size, self.vocab_size) #!is the input size really lstm_size? i.e. is the output of the lstm lstm_size?
     
     #Teacher forcing: all correct color words inputted during training, not taken from previous step
     #how to deal with evaluation? A separate piece of code using the trained weights and a loop
         #or incorporate loop here somehow
-    def forward(self, x_input, y_color_name):
+    #https://www.kdnuggets.com/2020/07/pytorch-lstm-text-generation-tutorial.html
+    def forward(self, x_input, y_color_name, prev_state):
         output = {}
         
-        embedded = self.embedding(y_color_name) 
+        embedded = self.embedding(y_color_name)
         
         #expand x_input and concat to embedded y_color_name
             #embedded shape (batch_size, seq_len, embedding_dim)
             #x_input shape (batch_size, input_size) --> (batch_size, seq_len, input_size)
             #concatenated shape (batch_size, seq_len, input_size + embedding_dim)
         x_input = torch.unsqueeze(x_input,1)
-        x_input.expand(-1, self.seq_len, -1)
+        x_input = x_input.expand(-1, self.max_seq_len, -1)
         lstm_input = torch.cat((embedded, x_input), -1)
 
         #pass through LSTM and FC layers to get logits
-        lstm_output = self.lstm(lstm_input)
+        lstm_output, state = self.lstm(lstm_input, prev_state)
         logit = self.fc(lstm_output)
 
         output['phi_logit'] = logit
@@ -181,5 +184,39 @@ class CompositionalXKCDModel(nn.Module):
         )
         output['word_score'] = torch.exp(output['log_word_score'])
         output['S0_probability'] = F.softmax(output['log_word_score'], dim=1)
+        
+        output['state'] = state
 
         return output
+    
+    def init_state(self):
+        return (torch.zeros(self.num_lstm_layers, self.max_seq_len, self.lstm_size),
+                torch.zeros(self.num_lstm_layers, self.max_seq_len, self.lstm_size))
+
+    def evaluate(self, x_input):
+        batch_size = x_input.size(dim = 0)
+        start_token = torch.full((batch_size,1), 1)
+        
+        word_indx = start_token
+        state = self.init_state()
+        '''come up with some more readable way of appending each tensor word_indx'''
+        color_description = []
+        
+        while word_indx is not 2:
+            embedded = self.embedding(word_indx)
+
+            #concat x_input to embedded
+                #embedded shape: (batch_size, embed_dim)
+                #x_input shape: (batch_size, input_size)
+                #concat shape = (batch_size, input_size + embed_dim)
+            lstm_input = torch.cat((embedded, x_input), -1)
+            lstm_output, state = self.lstm(lstm_input, state)
+            logit = self.fc(lstm_output)
+            
+            '''there might be an issue with the batch_size dimension'''
+            p = F.softmax(logit, dim=0).detach().numpy()
+            word_indx = np.random.choice(self.vocab_size, p=p)
+            color_description.append(word_indx)
+
+        color_description.reverse()
+        return color_description

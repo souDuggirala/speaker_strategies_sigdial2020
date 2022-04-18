@@ -217,16 +217,17 @@ class XKCD(Dataset):
     def get_num_batches(self, batch_size):
         return len(self) // batch_size
 
-#make this subclass from XKCD instead, because only init and __getitem__ are slightly different
+#!there could be an issue with resize() cutting off the string, but for now I'm sure there's no word with more than 4 words'''
 class CompositionalXKCD(XKCD):
     def __init__(self, matrix_filename, annotation_filename, coordinate_system='hue', 
-                 subset_function=lambda x: x, fft_resolution=3, timeit=False):
+                 subset_function=lambda x: x, fft_resolution=3, timeit=False, max_seq_len = 6):
         
         #!redoes train, val, test df creation after XKCD.__init__() does them, if this is a problem, don't subclass
 
         super().__init__(matrix_filename, annotation_filename, coordinate_system='hue', 
                  subset_function=lambda x: x, fft_resolution=3, timeit=False)
 
+        self.max_seq_len = max_seq_len
         self.color_vocab = get_comp_xkcd_vocab()
 
         col2index = {col:idx for idx, col in enumerate(self.annotations.columns)}
@@ -240,8 +241,11 @@ class CompositionalXKCD(XKCD):
             color_words = color_name.split() #list of words
             color_words.reverse() #make so that the head word is first and modifiers follow
             label_indices = [self.color_vocab._token_to_idx[color_word] for color_word in color_words]
-            #possibly some padding with zeros needed for training
-            self.train_fast.append((row_index, label_indices)) #might need to change this, because indices should be in input too...have to find out what train_fast is
+            label_indices.insert(0, 1) #prepend the start token
+            label_indices.append(2) #append the end token
+            label_indices = np.array(label_indices)
+            label_indices.resize(self.max_seq_len)
+            self.train_fast.append((row_index, label_indices))
 
         self.val_df = self.annotations[self.annotations.split=='val']
         self.validation_size = len(self.val_df)
@@ -252,7 +256,10 @@ class CompositionalXKCD(XKCD):
             color_words = color_name.split() #list of words
             color_words.reverse() #make so that the head word is first and modifiers follow
             label_indices = [self.color_vocab._token_to_idx[color_word] for color_word in color_words]
-            #possibly some padding with zeros needed for training
+            label_indices.insert(0, 1) #prepend the start token
+            label_indices.append(2) #append the end token
+            label_indices = np.array(label_indices)
+            label_indices.resize(self.max_seq_len)
             self.val_fast.append((row_index, label_indices)) 
 
 
@@ -265,7 +272,10 @@ class CompositionalXKCD(XKCD):
             color_words = color_name.split() #list of words
             color_words.reverse() #make so that the head word is first and modifiers follow
             label_indices = [self.color_vocab._token_to_idx[color_word] for color_word in color_words]
-            #possibly some padding with zeros needed for training
+            label_indices.insert(0, 1) #prepend the start token
+            label_indices.append(2) #append the end token
+            label_indices = np.array(label_indices)
+            label_indices.resize(self.max_seq_len)
             self.test_fast.append((row_index, label_indices))
 
         self._lookup_dict = {'train': (self.train_df, 
@@ -280,6 +290,16 @@ class CompositionalXKCD(XKCD):
 
         self.set_split('train')
 
+    #added seq len argument, should still work the same as all other calls to from_settings()
+    @classmethod
+    def from_settings(cls, coordinate_system="hue", subset_function=lambda x: x, timeit=False, max_seq_len = 6):
+        return cls(settings.XKCD_DATASET_FILES['color_values'], 
+                   settings.XKCD_DATASET_FILES['annotations'], 
+                   coordinate_system,
+                   subset_function=subset_function,
+                   timeit=timeit,
+                   max_seq_len=max_seq_len)
+
     def __getitem__(self, index):
         if self._use_fast:
             row_index, label_indices = self._target_fast[index]
@@ -290,8 +310,12 @@ class CompositionalXKCD(XKCD):
             color_words = item.color_name.split() #list of words
             color_words.reverse() #make so that the head word is first and modifiers follow
             label_indices = [self.color_vocab.lookup_token(color_word) for color_word in color_words]
+            label_indices.insert(0, 1) #prepend the start token
+            label_indices.append(2) #append the end token
+            label_indices = np.array(label_indices)
+            label_indices.resize(self.max_seq_len)
         return {
-            'x_color_value': vector, 
+            'x_color_value': vector,
             'y_color_name': label_indices,
             'data_index': index
         }

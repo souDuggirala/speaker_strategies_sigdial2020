@@ -113,10 +113,9 @@ class UncalibratedXKCDModelTrainer(BaseTrainer):
 class CompositionalXKCDModelTrainer(BaseTrainer):
 
     def make_dataset(self):
-        dataset = CompositionalXKCD.from_settings(coordinate_system=self.hparams.xkcd_coordinate_system)
+        dataset = CompositionalXKCD.from_settings(coordinate_system=self.hparams.xkcd_coordinate_system, max_seq_len=self.hparams.max_seq_len)
         self.hparams.input_size = dataset[0]['x_color_value'].shape[0]
         self.hparams.vocab_size = len(dataset.color_vocab)
-        self.hparams.seq_len = 4 #change to make more general, or need to make sure all index lists from dataset are this seq_len
         return dataset
 
     def make_model(self):
@@ -126,20 +125,28 @@ class CompositionalXKCDModelTrainer(BaseTrainer):
             num_lstm_layers=self.hparams.num_lstm_layers,
             embedding_dim=self.hparams.embedding_dim,
             vocab_size=self.hparams.vocab_size,
-            seq_len=self.hparams.seq_len
+            max_seq_len=self.hparams.max_seq_len
         )
 
     def setup_loss(self):
         self._ce_loss = nn.CrossEntropyLoss(reduction='mean')
 
+    #need to detach states? https://stackoverflow.com/questions/66187443/lstm-detach-the-hidden-state
+    #and in kdnuggets tutorial
     def compute_model_output(self, batch_dict):
-        return self.model(batch_dict['x_color_value'], batch_dict['y_color_name'])
+        prev_state = self.model.init_state()
+        output = self.model(batch_dict['x_color_value'], batch_dict['y_color_name'], prev_state)
+        state = output['state']
+        state[0] = state[0].detach()
+        state[1] = state[1].detach()
+        return output
 
     #later incorporate VAE regularization
-    #have to think more about loss
+    '''have to think more about loss'''
     def compute_loss(self, batch_dict, model_output):
+        y_color_name = batch_dict['y_color_name'][:, 1:] #crop out start token
         return self._ce_loss(model_output['log_word_score'],
-                             batch_dict['y_color_name'])
+                             y_color_name)
 
     def compute_metrics(self, batch_dict, model_output):
         return {
