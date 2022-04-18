@@ -1,4 +1,3 @@
-import io
 import json
 import numpy as np
 
@@ -12,8 +11,11 @@ old_color_names = old_vocab_dict.keys()
 color_names = np.unique(np.array([color_word for color_name in old_color_names for color_word in color_name.split()]))
 
 #turn into new dictionary
-indices = np.arange(0, color_names.size).tolist()
+    #0 padding, 1 <START>, 2 <END>
+indices = np.arange(3, color_names.size+3).tolist()
 vocab_dict = dict(zip(color_names, indices))
+vocab_dict['<START>'] = 1
+vocab_dict['<END>'] = 2
 
 #write to file
 out_file = open('comp_vocab.json', 'w')
