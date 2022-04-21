@@ -137,16 +137,15 @@ class CompositionalXKCDModelTrainer(BaseTrainer):
     '''later incorporate VAE regularization'''
     def compute_loss(self, batch_dict, model_output):
         target = batch_dict['y_color_name'][:, 1:] #crop out start token
-        pred = torch.transpose(model_output['log_word_score'], 1, 2)[:, :, :-1] #needs to be shape (batch_size, num_class, other_dim)
+        pred = model_output['log_word_score'][:, :-1, :] #make shape match target
+        pred = torch.transpose(pred,1,2) #needs to be shape (batch_size, num_class, other_dim)
         return self._ce_loss(pred, target)
 
     def compute_metrics(self, batch_dict, model_output):
-        return {'perplexity':0, 'accuracy': 0}
-        '''
+        target = batch_dict['y_color_name'][:, 1:] #crop out start token
+        pred = model_output['log_word_score'][:, :-1, :] #make shape match target
         return {
-            "perplexity": compute_perplexity(model_output['log_word_score'],
-                                             batch_dict['y_color_name'],
-                                             True),
-            "accuracy": compute_accuracy(model_output['log_word_score'],
-                                         batch_dict['y_color_name'])
-        }'''
+            "accuracy": compute_accuracy(pred,target, True),
+            #perplexity = exp(cross entropy loss) -- https://en.wikipedia.org/wiki/Perplexity 
+            "perplexity": torch.exp(self.compute_loss(batch_dict, model_output)).item()
+        }
