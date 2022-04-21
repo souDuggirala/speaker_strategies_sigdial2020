@@ -158,7 +158,7 @@ class CompositionalXKCDModel(nn.Module):
     #how to deal with evaluation? A separate piece of code using the trained weights and a loop
         #or incorporate loop here somehow
     #https://www.kdnuggets.com/2020/07/pytorch-lstm-text-generation-tutorial.html
-    def forward(self, x_input, y_color_name, prev_state):
+    def forward(self, x_input, y_color_name):
         output = {}
         
         embedded = self.embedding(y_color_name)
@@ -172,7 +172,7 @@ class CompositionalXKCDModel(nn.Module):
         lstm_input = torch.cat((embedded, x_input), -1)
 
         #pass through LSTM and FC layers to get logits
-        lstm_output, state = self.lstm(lstm_input, prev_state)
+        lstm_output, _ = self.lstm(lstm_input)
         logit = self.fc(lstm_output)
 
         output['phi_logit'] = logit
@@ -184,8 +184,6 @@ class CompositionalXKCDModel(nn.Module):
         )
         output['word_score'] = torch.exp(output['log_word_score'])
         output['S0_probability'] = F.softmax(output['log_word_score'], dim=1)
-        
-        output['state'] = state
 
         return output
     

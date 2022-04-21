@@ -115,7 +115,7 @@ class CompositionalXKCDModelTrainer(BaseTrainer):
     def make_dataset(self):
         dataset = CompositionalXKCD.from_settings(coordinate_system=self.hparams.xkcd_coordinate_system, max_seq_len=self.hparams.max_seq_len)
         self.hparams.input_size = dataset[0]['x_color_value'].shape[0]
-        self.hparams.vocab_size = len(dataset.color_vocab)
+        self.hparams.vocab_size = len(dataset.color_vocab) + 1 #one more for the padding idx 0
         return dataset
 
     def make_model(self):
@@ -131,28 +131,22 @@ class CompositionalXKCDModelTrainer(BaseTrainer):
     def setup_loss(self):
         self._ce_loss = nn.CrossEntropyLoss(reduction='mean')
 
-    #need to detach states? https://stackoverflow.com/questions/66187443/lstm-detach-the-hidden-state
-    #and in kdnuggets tutorial
     def compute_model_output(self, batch_dict):
-        prev_state = self.model.init_state()
-        output = self.model(batch_dict['x_color_value'], batch_dict['y_color_name'], prev_state)
-        state = output['state']
-        state[0] = state[0].detach()
-        state[1] = state[1].detach()
-        return output
+        return self.model(batch_dict['x_color_value'], batch_dict['y_color_name'])
 
-    #later incorporate VAE regularization
-    '''have to think more about loss'''
+    '''later incorporate VAE regularization'''
     def compute_loss(self, batch_dict, model_output):
-        y_color_name = batch_dict['y_color_name'][:, 1:] #crop out start token
-        return self._ce_loss(model_output['log_word_score'],
-                             y_color_name)
+        target = batch_dict['y_color_name'][:, 1:] #crop out start token
+        pred = torch.transpose(model_output['log_word_score'], 1, 2)[:, :, :-1] #needs to be shape (batch_size, num_class, other_dim)
+        return self._ce_loss(pred, target)
 
     def compute_metrics(self, batch_dict, model_output):
+        return {'perplexity':0, 'accuracy': 0}
+        '''
         return {
             "perplexity": compute_perplexity(model_output['log_word_score'],
                                              batch_dict['y_color_name'],
                                              True),
             "accuracy": compute_accuracy(model_output['log_word_score'],
                                          batch_dict['y_color_name'])
-        }
+        }'''
