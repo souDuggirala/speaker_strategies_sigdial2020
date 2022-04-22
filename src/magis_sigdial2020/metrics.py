@@ -23,16 +23,3 @@ def compute_perplexity(y_pred, y_true, apply_softmax=False):
     indices = np.arange(len(y_true))
     
     return 2**np.mean(-np.log2(y_pred[indices, y_true]))
-    
-'''
-def compute_perplexity_seq(y_pred, y_true, apply_softmax=False):
-    if apply_softmax:
-        y_pred = F.softmax(y_pred, dim=1)
-        
-    y_pred = y_pred.cpu().detach().numpy() # (batch_size, vocab_size)  # (batch_size, seq_len, vocab_size)
-    y_true = y_true.cpu().detach().numpy() # (batch_size,) # (batch_size, seq_len)
-    batch_indices = np.arange(y_true.shape[0]) # [0,1,2,...]
-    seq_indices = np.arange(y_true.shape[1])
-    
-    #get for each prediction in batch the probability associated with the "true" index
-    return 2**np.mean(-np.log2(y_pred[batch_indices, seq_indices, y_true]))'''
