@@ -1,7 +1,7 @@
 import argparse
 import pathlib
 
-from magis_sigdial2020.trainers.xkcd_model_trainers import CompositionalXKCDModelTrainer
+from magis_sigdial2020.trainers.xkcd_model_trainers import CompositionalModelTrainer
 from magis_sigdial2020.hyper_params import HyperParameters
 import tqdm
 import torch
@@ -32,7 +32,7 @@ def parse_hparams():
 
 def main():
     hparams = parse_hparams()
-    trainer = CompositionalXKCDModelTrainer(hparams, bar_func=tqdm.tqdm)
+    trainer = CompositionalModelTrainer(hparams, bar_func=tqdm.tqdm)
     print(hparams)
 
     try:

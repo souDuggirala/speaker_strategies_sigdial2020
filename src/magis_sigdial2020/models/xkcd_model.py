@@ -113,7 +113,7 @@ class XKCDModelWithRGC(XKCDModel):
         }
 
 #Could not find the LSTM model in standfordnlp/color-describer repo
-class CompositionalXKCDModel(nn.Module):
+class CompositionalModel(nn.Module):
     MODEL_TYPE = 'semantic'
     
     @classmethod
@@ -135,7 +135,7 @@ class CompositionalXKCDModel(nn.Module):
     
     #input_size is the size of the transformed color vector (like it is in XKCDModel)
     def __init__(self, input_size, lstm_size, num_lstm_layers, embedding_dim, vocab_size, max_seq_len):
-        super(CompositionalXKCDModel, self).__init__()
+        super(CompositionalModel, self).__init__()
         self.input_size = input_size
         self.lstm_size = lstm_size
         self.num_lstm_layers = num_lstm_layers
@@ -155,8 +155,6 @@ class CompositionalXKCDModel(nn.Module):
         self.fc = nn.Linear(self.lstm_size, self.vocab_size) #!is the input size really lstm_size? i.e. is the output of the lstm lstm_size?
     
     #Teacher forcing: all correct color words inputted during training, not taken from previous step
-    #how to deal with evaluation? A separate piece of code using the trained weights and a loop
-        #or incorporate loop here somehow
     #https://www.kdnuggets.com/2020/07/pytorch-lstm-text-generation-tutorial.html
     def forward(self, x_input, y_color_name):
         output = {}
@@ -173,17 +171,14 @@ class CompositionalXKCDModel(nn.Module):
 
         #pass through LSTM and FC layers to get logits
         lstm_output, _ = self.lstm(lstm_input)
-        logit = self.fc(lstm_output)
+        logits = self.fc(lstm_output)
 
-        output['phi_logit'] = logit
-
-        #copied this from XKCDModel, and though it makes sense to me, haven't fully through through all the math w.r.t. new model's loss
-            #unsure about sigmoid part
+        output['logits'] = logits
         output['log_word_score'] = (
-            torch_safe_log(torch.sigmoid(output['phi_logit'])) 
+            torch_safe_log(torch.sigmoid(output['logits'])) 
         )
         output['word_score'] = torch.exp(output['log_word_score'])
-        output['S0_probability'] = F.softmax(output['log_word_score'], dim=1)
+        output['S0_probability'] = F.softmax(output['log_word_score'], dim=2)
 
         return output
     

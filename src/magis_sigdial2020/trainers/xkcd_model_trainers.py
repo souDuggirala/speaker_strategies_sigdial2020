@@ -1,7 +1,7 @@
 from magis_sigdial2020.datasets.xkcd import XKCD, TeacherGuidedXKCD
 from magis_sigdial2020.datasets.xkcd.vectorized import CompositionalXKCD #not sure why XKCD and TeacherGuidedXKCD are able to be accessed through xkcd
 from magis_sigdial2020.metrics import compute_accuracy, compute_perplexity
-from magis_sigdial2020.models.xkcd_model import XKCDModel, CompositionalXKCDModel
+from magis_sigdial2020.models.xkcd_model import XKCDModel, CompositionalModel
 from magis_sigdial2020.trainers.base_trainer import BaseTrainer
 import torch
 import torch.nn as nn
@@ -110,7 +110,7 @@ class UncalibratedXKCDModelTrainer(BaseTrainer):
                                          batch_dict['y_color_name'])
         }
 
-class CompositionalXKCDModelTrainer(BaseTrainer):
+class CompositionalModelTrainer(BaseTrainer):
 
     def make_dataset(self):
         dataset = CompositionalXKCD.from_settings(coordinate_system=self.hparams.xkcd_coordinate_system, max_seq_len=self.hparams.max_seq_len)
@@ -119,7 +119,7 @@ class CompositionalXKCDModelTrainer(BaseTrainer):
         return dataset
 
     def make_model(self):
-        return CompositionalXKCDModel(
+        return CompositionalModel(
             input_size=self.hparams.input_size,
             lstm_size=self.hparams.lstm_size,
             num_lstm_layers=self.hparams.num_lstm_layers,
