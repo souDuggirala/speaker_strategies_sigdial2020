@@ -1,0 +1,8 @@
+experiment_name: E006_calibrations
+trial_name: 99th_percentile
+root_output_path: "/Users/soumyadugg/speaker_strategies_sigdial2020/lab/compositional_model/logs"
+target_experiment_name: E005_CompositionalModel
+target_trial_name: published_version 
+
+normalizing_percentile: 99
+xkcd_coordinate_system: fft
