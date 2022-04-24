@@ -1,0 +1,34 @@
+# Experiment Hyper Params
+experiment_name: E007_CompositionalXKCDModel
+trial_name: published_version
+root_output_path: "/Users/soumyadugg/speaker_strategies_sigdial2020/lab/compositional_model/logs"
+xkcd_coordinate_system: fft
+teacher_phi_path: "/Users/soumyadugg/speaker_strategies_sigdial2020/lab/compositional_model/logs/E006_calibrations/99th_percentile/calibrated_phis_99percentile.npy"
+
+        
+# Training Hyper Params
+seed: 1337
+num_epochs: 200
+batch_size: 512
+checkpoint_metric: perplexity
+learning_rate: 0.01
+patience_threshold: 4
+# loss: language modeling / cross entropy
+use_ce: true
+ce_weight: 1.0
+# loss: teacher phi / calibration
+use_teacher_phi: true
+teacher_phi_weight: 1.0
+# overall l2
+weight_decay: 0.000
+
+# Model Hyper Params (these need to be changed)
+input_size: -1
+lstm_size: 32
+num_lstm_layers: 2
+embedding_dim: 10
+vocab_size: -1
+max_seq_len: 6
+
+# Runtime params
+cuda: false 

@@ -213,3 +213,76 @@ class CompositionalModel(nn.Module):
 
         color_description.reverse()
         return color_description
+
+class CompositionalXKCDModel(nn.Module):
+    MODEL_TYPE = 'semantic'
+    
+    @classmethod
+    def make(cls, hparams, reload=False, eval_mode=False):
+        model = cls(
+            input_size=hparams.input_size,
+            lstm_size=hparams.lstm_size,
+            num_lstm_layers=hparams.num_lstm_layers,
+            embedding_dim=hparams.embedding_dim,
+            vocab_size=hparams.vocab_size,
+            max_seq_len=hparams.max_seq_len
+        )
+        if reload:
+            reload_trial_model(model, hparams.trial_path)
+        if eval_mode:
+            model = model.eval()
+        return model
+    
+    
+    #input_size is the size of the transformed color vector (like it is in XKCDModel)
+    def __init__(self, input_size, lstm_size, num_lstm_layers, embedding_dim, vocab_size, max_seq_len):
+        super(CompositionalXKCDModel, self).__init__()
+        self.input_size = input_size
+        self.lstm_size = lstm_size
+        self.num_lstm_layers = num_lstm_layers
+        self.embedding_dim = embedding_dim
+        self.vocab_size = vocab_size
+        self.max_seq_len = max_seq_len
+
+        self.embedding = nn.Embedding(
+            num_embeddings = self.vocab_size, 
+            embedding_dim = self.embedding_dim)
+        self.lstm = nn.LSTM(
+            input_size = self.input_size + self.embedding_dim, 
+            hidden_size = self.lstm_size, 
+            num_layers = self.num_lstm_layers, 
+            dropout = 0.2,
+            batch_first = True)
+        self.phi_fc = nn.Linear(self.lstm_size, self.vocab_size)
+        self.alpha_fc = nn.Linear(self.lstm_size, self.vocab_size)
+
+    #Teacher forcing: all correct color words inputted during training, not taken from previous step
+    #https://www.kdnuggets.com/2020/07/pytorch-lstm-text-generation-tutorial.html
+    def forward(self, x_input, y_color_name):
+        output = {}
+        
+        embedded = self.embedding(y_color_name)
+        
+        #expand x_input and concat to embedded y_color_name
+            #embedded shape (batch_size, seq_len, embedding_dim)
+            #x_input shape (batch_size, input_size) --> (batch_size, seq_len, input_size)
+            #concatenated shape (batch_size, seq_len, input_size + embedding_dim)
+        x_input = torch.unsqueeze(x_input,1)
+        x_input = x_input.expand(-1, self.max_seq_len, -1)
+        lstm_input = torch.cat((embedded, x_input), -1)
+
+        #pass through LSTM and FC layers to get logits and alpha
+        lstm_output, _ = self.lstm(lstm_input)
+        phi_logit = self.phi_fc(lstm_output)
+        alpha = self.alpha_fc(lstm_output)
+
+        output['phi_logit'] = phi_logit
+        output['alpha'] = alpha
+        output['log_word_score'] = (
+            torch_safe_log(torch.sigmoid(output['phi_logit'])
+                        + torch.log(torch.sigmoid(output['alpha'])))
+        )
+        output['word_score'] = torch.exp(output['log_word_score'])
+        output['S0_probability'] = F.softmax(output['log_word_score'], dim=2)
+
+        return output
