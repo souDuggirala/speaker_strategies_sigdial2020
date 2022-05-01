@@ -156,7 +156,7 @@ class CompositionalModel(nn.Module):
     
     #Teacher forcing: all correct color words inputted during training, not taken from previous step
     #https://www.kdnuggets.com/2020/07/pytorch-lstm-text-generation-tutorial.html
-    def forward(self, x_input, y_color_name):
+    def forward(self, x_input, y_color_name, in_state = None):
         output = {}
         
         embedded = self.embedding(y_color_name)
@@ -170,7 +170,10 @@ class CompositionalModel(nn.Module):
         lstm_input = torch.cat((embedded, x_input), -1)
 
         #pass through LSTM and FC layers to get logits
-        lstm_output, _ = self.lstm(lstm_input)
+        if in_state is None:
+            lstm_output, out_state = self.lstm(lstm_input)
+        else:
+            lstm_output, out_state = self.lstm(lstm_input, in_state)
         logits = self.fc(lstm_output)
 
         output['logits'] = logits
@@ -179,40 +182,10 @@ class CompositionalModel(nn.Module):
         )
         output['word_score'] = torch.exp(output['log_word_score'])
         output['S0_probability'] = F.softmax(output['log_word_score'], dim=2)
+        output['probability'] = F.softmax(output['word_score'], dim=2)
+        output['state'] = out_state
 
         return output
-    
-    def init_state(self):
-        return (torch.zeros(self.num_lstm_layers, self.max_seq_len, self.lstm_size),
-                torch.zeros(self.num_lstm_layers, self.max_seq_len, self.lstm_size))
-
-    def evaluate(self, x_input):
-        batch_size = x_input.size(dim = 0)
-        start_token = torch.full((batch_size,1), 1)
-        
-        word_indx = start_token
-        state = self.init_state()
-        '''come up with some more readable way of appending each tensor word_indx'''
-        color_description = []
-        
-        while word_indx is not 2:
-            embedded = self.embedding(word_indx)
-
-            #concat x_input to embedded
-                #embedded shape: (batch_size, embed_dim)
-                #x_input shape: (batch_size, input_size)
-                #concat shape = (batch_size, input_size + embed_dim)
-            lstm_input = torch.cat((embedded, x_input), -1)
-            lstm_output, state = self.lstm(lstm_input, state)
-            logit = self.fc(lstm_output)
-            
-            '''there might be an issue with the batch_size dimension'''
-            p = F.softmax(logit, dim=0).detach().numpy()
-            word_indx = np.random.choice(self.vocab_size, p=p)
-            color_description.append(word_indx)
-
-        color_description.reverse()
-        return color_description
 
 class CompositionalXKCDModel(nn.Module):
     MODEL_TYPE = 'semantic'
