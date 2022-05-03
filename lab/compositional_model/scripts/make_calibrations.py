@@ -93,7 +93,7 @@ def main():
             )
             bar.update(teacher_phi[-1].shape[0])
         teacher_phi = np.concatenate(teacher_phi).astype(np.float32)
-        assert teacher_phi.shape == (len(dataset), model.max_seq_len, len(dataset.color_vocab))
+        assert teacher_phi.shape == (len(dataset), model.max_seq_len, len(dataset.color_vocab)+1)
     
         np.save(hparams.unnormalized_filepath, teacher_phi)
         print("unnormalized cached")

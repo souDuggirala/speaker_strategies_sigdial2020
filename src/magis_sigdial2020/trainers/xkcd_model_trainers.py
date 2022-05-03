@@ -1,6 +1,6 @@
 from magis_sigdial2020.datasets.xkcd import XKCD, TeacherGuidedXKCD
 from magis_sigdial2020.datasets.xkcd.vectorized import CompositionalXKCD #not sure why XKCD and TeacherGuidedXKCD are able to be accessed through xkcd
-from magis_sigdial2020.metrics import compute_accuracy, compute_perplexity
+from magis_sigdial2020.metrics import compute_accuracy, compute_perplexity, compute_perplexity_seq
 from magis_sigdial2020.models.xkcd_model import XKCDModel, CompositionalModel, CompositionalXKCDModel
 from magis_sigdial2020.trainers.base_trainer import BaseTrainer
 import torch
@@ -130,6 +130,7 @@ class CompositionalModelTrainer(BaseTrainer):
 
     def setup_loss(self):
         self._ce_loss = nn.CrossEntropyLoss(reduction='mean')
+        self._sum_ce_loss = nn.CrossEntropyLoss(reduction = 'sum')
 
     def compute_model_output(self, batch_dict):
         return self.model(batch_dict['x_color_value'], batch_dict['y_color_name'])
@@ -144,10 +145,13 @@ class CompositionalModelTrainer(BaseTrainer):
     def compute_metrics(self, batch_dict, model_output):
         target = batch_dict['y_color_name'][:, 1:] #crop out start token
         pred = model_output['log_word_score'][:, :-1, :] #make shape match target
+        pred_perplexity = torch.transpose(pred,1,2)
         return {
-            "accuracy": compute_accuracy(pred,target, True),
+            "accuracy": -1,#compute_accuracy(pred,target, True),
             #perplexity = exp(cross entropy loss) -- https://en.wikipedia.org/wiki/Perplexity 
-            "perplexity": torch.exp(self.compute_loss(batch_dict, model_output)).item()
+            "perplexity": compute_perplexity_seq(pred, target, True),
+            "perplexity_mean": torch.exp(self._ce_loss(pred_perplexity, target)).item(),
+            "perplexity_sum": torch.exp(self._sum_ce_loss(pred_perplexity, target)).item()
         }
 
 class CompositionalXKCDModelTrainer(BaseTrainer):
@@ -173,7 +177,7 @@ class CompositionalXKCDModelTrainer(BaseTrainer):
             )
         
         self.hparams.input_size = dataset.xkcd[0]['x_color_value'].shape[0]
-        self.hparams.vocab_size = len(dataset.color_vocab) + 1 #one more for the padding idx 0
+        self.hparams.vocab_size = len(dataset.xkcd.color_vocab) + 1 #one more for the padding idx 0
         
         return dataset
 
@@ -189,6 +193,7 @@ class CompositionalXKCDModelTrainer(BaseTrainer):
 
     def setup_loss(self):
         self._ce_loss = nn.CrossEntropyLoss(reduction='mean')
+        self._sum_ce_loss = nn.CrossEntropyLoss(reduction = 'sum')
         self._bce_logit_loss = nn.BCEWithLogitsLoss(reduction='mean')
 
     def compute_model_output(self, batch_dict):
@@ -197,8 +202,10 @@ class CompositionalXKCDModelTrainer(BaseTrainer):
     def compute_loss(self, batch_dict, model_output):
         loss = 0
         if self.hparams.use_ce:
-            loss += self.hparams.ce_weight * self._ce_loss(model_output['log_word_score'],
-                                                        batch_dict['y_color_name'])
+            target = batch_dict['y_color_name'][:, 1:] #crop out start token
+            pred = model_output['log_word_score'][:, :-1, :] #make shape match target
+            pred = torch.transpose(pred,1,2) #needs to be shape (batch_size, num_class, other_dim)
+            loss += self.hparams.ce_weight * self._ce_loss(pred, target)
         if self.hparams.use_teacher_phi:
             loss += self.hparams.teacher_phi_weight * self._bce_logit_loss(model_output['phi_logit'],
                                                                         batch_dict['teacher_phi'])
@@ -207,9 +214,13 @@ class CompositionalXKCDModelTrainer(BaseTrainer):
     def compute_metrics(self, batch_dict, model_output):
         target = batch_dict['y_color_name'][:, 1:] #crop out start token
         pred = model_output['log_word_score'][:, :-1, :] #make shape match target
+        pred_perplexity = torch.transpose(pred,1,2)
         return {
-            "accuracy": compute_accuracy(pred,target, True),
-            "perplexity": torch.exp(self.compute_loss(batch_dict, model_output)).item()
+            "accuracy": -1,#compute_accuracy(pred,target, True),
+            #perplexity = exp(cross entropy loss) -- https://en.wikipedia.org/wiki/Perplexity 
+            "perplexity": compute_perplexity_seq(pred, target, True),
+            "perplexity_mean": torch.exp(self._ce_loss(pred_perplexity, target)).item(),
+            "perplexity_sum": torch.exp(self._sum_ce_loss(pred_perplexity, target)).item()
         }
     
     '''I don't know what this is'''

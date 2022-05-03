@@ -23,3 +23,14 @@ def compute_perplexity(y_pred, y_true, apply_softmax=False):
     indices = np.arange(len(y_true))
     
     return 2**np.mean(-np.log2(y_pred[indices, y_true]))
+
+def compute_perplexity_seq(y_pred, y_true, apply_softmax=False):
+    if apply_softmax:
+        y_pred = F.softmax(y_pred, dim=1)
+        
+    y_pred = y_pred.cpu().detach().numpy()
+    y_true = y_true.cpu().detach().numpy()
+    batch_indices = np.arange(y_true.shape[0])
+    seq_indices = np.arange(y_true.shape[1])
+
+    return 2**np.mean(np.sum(-np.log2(y_pred[:, seq_indices, y_true][batch_indices, batch_indices]), axis = 1))
