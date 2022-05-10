@@ -231,7 +231,7 @@ class CompositionalXKCDModel(nn.Module):
 
     #Teacher forcing: all correct color words inputted during training, not taken from previous step
     #https://www.kdnuggets.com/2020/07/pytorch-lstm-text-generation-tutorial.html
-    def forward(self, x_input, y_color_name):
+    def forward(self, x_input, y_color_name, in_state = None):
         output = {}
         
         embedded = self.embedding(y_color_name)
@@ -245,17 +245,21 @@ class CompositionalXKCDModel(nn.Module):
         lstm_input = torch.cat((embedded, x_input), -1)
 
         #pass through LSTM and FC layers to get logits and alpha
-        lstm_output, _ = self.lstm(lstm_input)
+        if in_state is None:
+            lstm_output, out_state = self.lstm(lstm_input)
+        else:
+            lstm_output, out_state = self.lstm(lstm_input, in_state)
         phi_logit = self.phi_fc(lstm_output)
         alpha = self.alpha_fc(lstm_output)
 
         output['phi_logit'] = phi_logit
         output['alpha'] = alpha
         output['log_word_score'] = (
-            torch_safe_log(torch.sigmoid(output['phi_logit'])
-                        + torch.log(torch.sigmoid(output['alpha'])))
+            torch_safe_log(torch.sigmoid(output['phi_logit']))
+                        + torch.log(torch.sigmoid(output['alpha']))
         )
         output['word_score'] = torch.exp(output['log_word_score'])
         output['S0_probability'] = F.softmax(output['log_word_score'], dim=2)
+        output['state'] = out_state
 
         return output

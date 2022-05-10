@@ -26,7 +26,7 @@ def compute_perplexity(y_pred, y_true, apply_softmax=False):
 
 def compute_perplexity_seq(y_pred, y_true, apply_softmax=False):
     if apply_softmax:
-        y_pred = F.softmax(y_pred, dim=1)
+        y_pred = F.softmax(y_pred, dim=2)
         
     y_pred = y_pred.cpu().detach().numpy()
     y_true = y_true.cpu().detach().numpy()
