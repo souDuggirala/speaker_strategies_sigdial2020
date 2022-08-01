@@ -61,15 +61,14 @@ def instantiate_models(hparams):
         get_specific_args(hparams.target_compositional_xkcd_experiment, hparams.target_compositional_xkcd_trial),
         reload=True, eval_mode=True
     )
-    compositional_model.max_seq_len = 1
-    compositional_xkcd_model.max_seq_len = 1
     #load Monroe compositional model
     #load XKCD compositional model
     return compositional_model, compositional_xkcd_model
 
+'''Greedy Decoding -- feed result of previous recurrent step into next'''
 #target_description contains both start and end token, so output should too
 #pred = model_output['log_word_score'][:, :-1, :] #make shape match target
-def evaluate_model(model, color_patch, hparams):
+def evaluate_model_greedy(model, color_patch, hparams):
     #fill shape (batch_size, 1) with start token
     color_patch = color_patch.to(hparams.device)
     start_token = torch.full((color_patch.size(dim=0), 1),1).long()
@@ -144,17 +143,19 @@ def main():
         for batch in batch_generator:
             target_description = batch['y_color_name']
             color_patch = batch['x_color_value']
+            target_description.to(hparams.device)
+            color_patch.to(hparams.device)
 
             results_df_i['y_color_name'].append(to_numpy(target_description))
             results_df_i['x_color_value'].append(to_numpy(color_patch))
             
-            monroe_output = evaluate_model(monroe_model, color_patch, hparams)
-            compositional_xkcd_output = evaluate_model(compositional_xkcd_model, color_patch, hparams)
+            monroe_output = monroe_model(color_patch, target_description)['log_word_score']
+            compositional_xkcd_output = compositional_xkcd_model(color_patch, target_description)['log_word_score']
             results_df_i['Monroe output'].append(to_numpy(monroe_output))
             results_df_i['CompositionalXKCD output'].append(to_numpy(compositional_xkcd_output))
 
-            results_df_i['Monroe perplexity'].append(compute_perplexity_seq(monroe_output[:, :-1, :], target_description[:, 1:]))
-            results_df_i['CompositionalXKCD perplexity'].append(compute_perplexity_seq(compositional_xkcd_output[:, :-1, :], target_description[:, 1:]))
+            results_df_i['Monroe perplexity'].append(compute_perplexity_seq(monroe_output[:, :-1, :], target_description[:, 1:], True))
+            results_df_i['CompositionalXKCD perplexity'].append(compute_perplexity_seq(compositional_xkcd_output[:, :-1, :], target_description[:, 1:], True))
 
             batch_bar.update()
 
