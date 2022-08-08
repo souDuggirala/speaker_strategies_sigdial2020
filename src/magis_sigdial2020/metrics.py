@@ -25,6 +25,9 @@ def compute_perplexity(y_pred, y_true, apply_softmax=False):
     return 2**np.mean(-np.log2(y_pred[indices, y_true]))
 
 def compute_perplexity_seq(y_pred, y_true, apply_softmax=False):
+    return 2**compute_entropy_seq(y_pred, y_true, apply_softmax)
+
+def compute_entropy_seq(y_pred, y_true, apply_softmax=False, mask_padding = True):
     if apply_softmax:
         y_pred = F.softmax(y_pred, dim=2)
         
@@ -33,4 +36,9 @@ def compute_perplexity_seq(y_pred, y_true, apply_softmax=False):
     batch_indices = np.arange(y_true.shape[0])
     seq_indices = np.arange(y_true.shape[1])
 
-    return 2**np.mean(np.sum(-np.log2(y_pred[:, seq_indices, y_true][batch_indices, batch_indices]), axis = 1))
+    #make so that the probability of index 0 (padding) is 1 (should probably only be applied after softmax)
+    if mask_padding:
+        y_pred[y_true==0]= 0
+        y_pred[y_true==0,0] = 1
+
+    return np.mean(np.sum(-np.log2(y_pred[:, seq_indices, y_true][batch_indices, batch_indices]), axis = 1))

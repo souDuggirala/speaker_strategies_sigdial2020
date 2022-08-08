@@ -9,7 +9,7 @@ import time
 from magis_sigdial2020.models.xkcd_model import CompositionalModel, CompositionalXKCDModel
 from magis_sigdial2020.hyper_params import HyperParameters
 from magis_sigdial2020.datasets.xkcd.vectorized import CompositionalXKCD
-from magis_sigdial2020.metrics import compute_perplexity_seq
+from magis_sigdial2020.metrics import compute_entropy_seq
 from magis_sigdial2020 import settings
 import pyromancy
 from pyromancy.utils import get_args
@@ -121,10 +121,11 @@ def main():
         results_df_i = {
             "x_color_value": [], 
             "y_color_name": [],
-            "Monroe perplexity": [],
-            "CompositionalXKCD perplexity": [],
+            "Monroe entropy": [],
+            "CompositionalXKCD entropy": [],
             "Monroe output": [],
-            "CompositionalXKCD output": []
+            "CompositionalXKCD output": [],
+            "batch weight": []
         }
 
         monroe_model, compositional_xkcd_model = instantiate_models(hparams)
@@ -141,6 +142,8 @@ def main():
         )
 
         for batch in batch_generator:
+            results_df_i['batch weight'] = batch['x_color_value'].size(dim=0)/hparams.batch_size
+            
             target_description = batch['y_color_name']
             color_patch = batch['x_color_value']
             target_description.to(hparams.device)
@@ -154,8 +157,8 @@ def main():
             results_df_i['Monroe output'].append(to_numpy(monroe_output))
             results_df_i['CompositionalXKCD output'].append(to_numpy(compositional_xkcd_output))
 
-            results_df_i['Monroe perplexity'].append(compute_perplexity_seq(monroe_output[:, :-1, :], target_description[:, 1:], True))
-            results_df_i['CompositionalXKCD perplexity'].append(compute_perplexity_seq(compositional_xkcd_output[:, :-1, :], target_description[:, 1:], True))
+            results_df_i['Monroe entropy'].append(compute_entropy_seq(monroe_output[:, :-1, :], target_description[:, 1:], True))
+            results_df_i['CompositionalXKCD entropy'].append(compute_entropy_seq(compositional_xkcd_output[:, :-1, :], target_description[:, 1:], True))
 
             batch_bar.update()
 
@@ -165,8 +168,13 @@ def main():
         results_df.append(results_df_i)
 
     results_df = pd.concat(results_df)
-    print("Monroe average perplexity: " + str(results_df['Monroe perplexity'].mean()))
-    print("CompositionalXKCD average perplexity: " + str(results_df['CompositionalXKCD perplexity'].mean()))
+    monroe_mean_entropy = (results_df['Monroe entropy'].dot(results_df['batch weight'])) / (results_df['batch weight'].sum())
+    print("Monroe perplexity across data: " + str(2**monroe_mean_entropy))
+    compxkcd_mean_entropy = (results_df['CompositionalXKCD entropy'].dot(results_df['batch weight'])) / (results_df['batch weight'].sum())   
+    print("CompositionalXKCD perplexity across data: " + str(2**compxkcd_mean_entropy))
+    print("Perplexities by split")
+    print(2**results_df.groupby("split").apply(lambda x: x[['Monroe entropy','CompositionalXKCD entropy']].apply(lambda col : col.dot(x['batch weight']) / x['batch weight'].sum())))
+
     results_df.to_csv(hparams.results_filepath, index=None)
     exp.log_exp_end()
 
