@@ -224,7 +224,7 @@ class CompositionalXKCD(XKCD):
         
         #!redoes train, val, test df creation after XKCD.__init__() does them, if this is a problem, don't subclass
 
-        super().__init__(matrix_filename, annotation_filename, coordinate_system='hue', 
+        super().__init__(matrix_filename, annotation_filename, coordinate_system=coordinate_system, 
                  subset_function=lambda x: x, fft_resolution=3, timeit=False)
 
         self.max_seq_len = max_seq_len
