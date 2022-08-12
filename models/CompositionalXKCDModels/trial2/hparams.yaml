@@ -22,4 +22,4 @@ use_ce: true
 use_teacher_phi: true
 vocab_size: 340
 weight_decay: 0.0
-xkcd_coordinate_system: fft
+xkcd_coordinate_system: hue

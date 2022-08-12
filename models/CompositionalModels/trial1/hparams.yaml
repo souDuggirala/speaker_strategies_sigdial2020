@@ -17,4 +17,4 @@ seed: 1337
 trial_name: trial1
 vocab_size: 340
 weight_decay: 0.0
-xkcd_coordinate_system: fft
+xkcd_coordinate_system: hue
