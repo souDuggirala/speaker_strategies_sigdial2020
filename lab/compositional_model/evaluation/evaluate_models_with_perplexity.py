@@ -17,6 +17,7 @@ import pyromancy.reader as reader
 import pyromancy.subscribers as sub
 import numpy as np
 import pandas as pd
+from scipy.special import softmax
 import torch
 import tqdm
 
@@ -175,7 +176,16 @@ def main():
     print("Perplexities by split")
     print(2**results_df.groupby("split").apply(lambda x: x[['Monroe entropy','CompositionalXKCD entropy']].apply(lambda col : col.dot(x['batch weight']) / x['batch weight'].sum())))
 
-    results_df.to_csv(hparams.results_filepath, index=None)
+    #for each word in sequence, the max softmax output across colorspace (softmax turns phi logits into probabilities)
+    max_across_colorspace = results_df['CompositionalXKCD output'].apply(lambda x: softmax(x, axis = 2).max(axis = 2))
+    percent_close_to_1 = max_across_colorspace.apply(lambda x: (x>0.999).sum()).sum()/max_across_colorspace.apply(lambda x: x.size).sum()
+    print("Frequency of softmax phi output being close to 1 somewhere in colorspace: " + str(percent_close_to_1))
+    mean_max_output = max_across_colorspace.apply(lambda x: x.sum()).sum()/max_across_colorspace.apply(lambda x: x.size).sum()
+    print("Mean of the max softmax phi outputs: " + str(mean_max_output))
+
+    #have trouble pickling because df is too large
+    #results_df.head().to_pickle(hparams.results_filepath)
+    results_df.to_csv(hparams.results_filepath, index = None)
     exp.log_exp_end()
 
 if __name__ == "__main__":
