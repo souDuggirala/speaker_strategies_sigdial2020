@@ -1,6 +1,9 @@
+from itertools import filterfalse
 from magis_sigdial2020.datasets.colorspace import get_colorspace
 from magis_sigdial2020.datasets.xkcd.vectorized import XKCD, CompositionalXKCD
 from magis_sigdial2020.utils import color
+from magis_sigdial2020.utils.data import generate_batches
+from functools import reduce
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -151,14 +154,39 @@ class CompositionalColorspacePlotter(ColorspacePlotter):
         super().__init__(model, coordinate_system, cuda)
         self.comp_xkcd = CompositionalXKCD.from_settings(coordinate_system=coordinate_system)
 
-        #can add something similar to self._label2rows here
+        self._seqword2rows = {
+            (word_index, seq_position):([],[]) 
+            for word_index in self.comp_xkcd.color_vocab._idx_to_token.keys() 
+            for seq_position in range(self.comp_xkcd.max_seq_len)
+        }
+        
+        for target_index in range(len(self.comp_xkcd._target_fast)):
+            row_index, label_indices = self.comp_xkcd._target_fast[target_index]
+            for seq_position in range(len(label_indices)):     
+                word_index = label_indices[seq_position]
+                if word_index == 0:
+                    break
+                self._seqword2rows[(word_index, seq_position)][0].append(target_index)
+                self._seqword2rows[(word_index, seq_position)][1].append(row_index)
+        
+        self._seqword2rows = {
+            (word_index, seq_position): (np.array(target_indices, dtype=np.int32), np.array(row_indices, dtype=np.int32))
+            for (word_index, seq_position), (target_indices, row_indices) in self._seqword2rows.items()
+        }
+        
 
-    def full_color_term_to_indices(self, color_term):
+    #turns color_term string into reverse list of indices
+    def color_term_to_indices(self, color_term):
         color_term = list(reversed(color_term.split()))
-        color_term = np.array([self.comp_xkcd.color_vocab.lookup_token(color_word) for color_word in color_term])
-        color_term = np.insert(color_term, 0, 1)
-        color_term = np.append(color_term, 2)
-        return color_term
+        color_term_indices = np.array([self.comp_xkcd.color_vocab.lookup_token(color_word) for color_word in color_term])
+        return color_term_indices
+
+    #turns color_term string into reverse list of indices, including <START> and <STOP> indices 
+    def full_color_term_to_indices(self, color_term):
+        color_term_indices = self.color_term_to_indices(color_term)
+        color_term_indices = np.insert(color_term_indices, 0, 1)
+        color_term_indices = np.append(color_term_indices, 2)
+        return color_term_indices
 
     #color_term_indices is a list of indices that begins with 1 (the START token) and ends with 2 (the STOP token)
     def apply_model_to_colorspace(self, color_term_indices):
@@ -188,6 +216,32 @@ class CompositionalColorspacePlotter(ColorspacePlotter):
         phi = phi.reshape((self.csd.num_h, self.csd.num_s, self.csd.num_v, phi.shape[-2], phi.shape[-1]))
         return p_word, phi
 
+    def apply_model_to_subset(self, target_indices):
+
+        to_numpy = lambda tensor: tensor.cpu().detach().numpy() #put this somewhere else later
+        phi = []
+        p_word = []
+
+        subset = torch.utils.data.Subset(self.comp_xkcd, target_indices)
+        batch_generator = generate_batches(
+            subset,
+            batch_size=256, 
+            shuffle=False, 
+            drop_last=False,
+            device=self.device
+        )
+
+        for _, batch in enumerate(batch_generator):
+            model_output = self.model(batch['x_color_value'], batch['y_color_name'])
+
+            p_word.append(to_numpy(model_output['S0_probability']))
+            phi.append(to_numpy(torch.sigmoid(model_output['phi_logit'])))
+
+        p_word = np.vstack(p_word)
+        phi = np.vstack(phi)
+
+        return p_word, phi
+
     '''
     Contour plots the probability/applicability over colorspace of certain words in color_term, as specified by seq_positions
     Probabilities/applicabilities for those chosen words in color_term are multiplied together, so that the value calculated is
@@ -200,15 +254,49 @@ class CompositionalColorspacePlotter(ColorspacePlotter):
     target can be either 'p_word' for probability or 'phi' for applicability
 
     '''
-    def contour_plot(self, color_term,  seq_positions, target='p_word', levels=[0.1, 0.5], 
+    def contour_plot_full_color_term(self, color_term,  seq_positions=-1, target='p_word', levels=[0.1, 0.5], 
                      linestyles=['--', '-'], figsize=(15, 5), title_prefix='', 
                      dim_reduce_func=np.mean, num_to_scatter=-1, scatter_seed=0):
-        fig, axes = plt.subplots(1, 2, figsize=figsize)
-        if len(title_prefix) > 0:
-            title_prefix = title_prefix.strip() + ' '
         
         word_indices = self.full_color_term_to_indices(color_term)
         print("Translated to indices: " + str(word_indices))
+        
+        #figure setup and title creation
+        #[START red bright burning STOP]
+            #'Applicability (phi) across colorspace of 'red' acting as head and 'bright','burning' acting as modifiers in 'burning bright red'
+            #'Applicability (phi) across colorspace of 'bright','burning' acting as modifiers in 'burning bright red'
+            #'Applicability (phi) across colorspace of 'burning bright red' being a full description
+        fig, axes = plt.subplots(1, 2, figsize=figsize)
+        if len(title_prefix) > 0:
+            title_prefix = title_prefix.strip() + ' '       
+        title = 'Applicability (phi) across colorspace of' if target == "phi" else 'Probability across colorspace of'       
+        if seq_positions == -1 or len(seq_positions)+1==len(word_indices):
+            title+=f' {color_term} as a full description'
+        else:
+            head = False
+            modifiers = False
+            for i in range(len(word_indices)-1):
+                word = self.comp_xkcd.color_vocab._idx_to_token[word_indices[i+1]]
+                if i in seq_positions:
+                    if i == 0:
+                        title+=f' {word} acting as head' 
+                        head = True
+                    elif head and not modifiers:
+                        title+=f' and {word}'
+                        modifiers = True
+                    else:
+                        title+=f' {word}'
+                        modifiers = True
+            if modifiers:
+                title+=f' acting as modifier'
+            if (np.array(seq_positions)>0).sum() > 1:
+                title+='s'
+            title+=f' in {color_term}'
+
+        #default is to get activations for all words
+        if seq_positions == -1:
+            seq_positions = np.arange(len(word_indices)-1)
+            print("Seq positions: " +  str(seq_positions))
 
         p_word, phi = self.apply_model_to_colorspace(word_indices)
         activations = p_word if target=='p_word' else phi
@@ -255,15 +343,62 @@ class CompositionalColorspacePlotter(ColorspacePlotter):
 
         plt.tight_layout()
         plt.subplots_adjust(top=0.9)
-        if target == "phi":
-            plt.suptitle(f'Applicability (phi) of {color_term} across colorspace')
-        elif target == "p_word":
-            plt.suptitle(f'Probability of {color_term} across colorspace')
+        plt.suptitle(title)
 
-    def scatter_plot(self, color_term_subset, seq_positions, dim = '3D'):
-        return 0
-        #turn color_term into index
-        #get target words that contain color_term and the corresponding hsv vals from XKCD
-        #do some numpy to multiply activations at seq_position indices
-        #plot the result
+    #color_term is a color description string to be turned into a reversed list of indices
+    #seq_positions should correspond to the the reversed order of the words in color_term
+    #the points plotted are then those points where wordindx1 from reversed list is in seq_position1 AND wordindx2 in seq_position2 etc.
+    def scatter_plot_subset_color_term(self, color_term, seq_positions, target='p_word', dim = '3d', levels=[0.1, 0.5], 
+                                        linestyles=['--', '-'], figsize=(15, 5), title_prefix='', 
+                                        num_to_scatter=-1, scatter_seed=0):
         
+        color_term_indices = self.color_term_to_indices(color_term)
+        
+        #use intersection to get points where all words in color_term occur in their seq_positions
+        if len(color_term_indices)==1:
+            target_indices, row_indices = self._seqword2rows[(color_term_indices[0], seq_positions[0])]
+        else:
+            row_indices = reduce(np.intersect1d([self._seqword2rows[(word_index, seq_position)] for word_index in color_term_indices for seq_position in seq_positions]))
+        hsv_values = self.comp_xkcd._original_data_matrix[row_indices]
+        p_word, phi = self.apply_model_to_subset(target_indices)
+        activations = p_word if target=='p_word' else phi
+        activations = activations[:,seq_positions, color_term_indices].prod(axis = 1)
+
+        if len(title_prefix) > 0:
+            title_prefix = title_prefix.strip() + ' '
+
+        if dim=='2d':
+            fig, axes = plt.subplots(1, 2, figsize=figsize)
+            img = axes[0].scatter(hsv_values[:,0],hsv_values[:,1], c = activations, marker = 'o', cmap = plt.hot())
+            plt.colorbar(img, ax = axes[0])
+            axes[0].set_xlabel('Hue')
+            axes[0].set_ylabel('Saturation')
+            img = axes[1].scatter(hsv_values[:,0],hsv_values[:,2], c = activations, marker = 'o', cmap = plt.hot())
+            plt.colorbar(img, ax = axes[1])
+            axes[1].set_xlabel('Hue')
+            axes[1].set_ylabel('Value')
+        else:
+            fig = plt.figure(figsize=figsize)
+            ax = fig.add_subplot(projection='3d')
+            img = ax.scatter(hsv_values[:,0],hsv_values[:,1],hsv_values[:,2], c = activations, marker = 'o', cmap = plt.hot())
+            fig.colorbar(img)
+            ax.set_xlabel('Hue')
+            ax.set_ylabel('Value')
+            ax.set_zlabel('Saturation')
+
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.9)
+        if target == "phi":
+            plt.suptitle(f'Applicability (phi) of points containing {color_term} in colorspace')
+        elif target == "p_word":
+            plt.suptitle(f'Probability of points containing {color_term} in colorspace')
+
+
+'''
+Plotting issues/features:
+
+markers for full vs subset in scatter plot
+why is the colormap scale the way it is?
+choose only a certain number of points to scatter
+Error messages for predictable errors, so that I don't think they are bugs
+'''

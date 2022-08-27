@@ -73,9 +73,9 @@ class XKCD(Dataset):
         if 'Unnamed: 0' in self.annotations.columns:
             del self.annotations['Unnamed: 0']
 
+        self._original_data_matrix = self.data_matrix
         if coordinate_system == 'x-y':
             logger.info("Using the x-y coordinate system")
-            self._original_data_matrix = self.data_matrix
             num_rows, _ = self._original_data_matrix.shape
             hue_col = self._original_data_matrix[:, 0]
             self.data_matrix = np.zeros((num_rows, 4))
@@ -83,7 +83,6 @@ class XKCD(Dataset):
             self.data_matrix[:, 0] = np.sin(hue_col * 2 * np.pi)
             self.data_matrix[:, 1] = np.cos(hue_col * 2 * np.pi)
         elif coordinate_system == 'super':
-            self._original_data_matrix = self.data_matrix
             num_rows, _ = self._original_data_matrix.shape
             hue_col = self._original_data_matrix[:, 0]
             self.data_matrix = np.zeros((num_rows, 5))
@@ -93,7 +92,6 @@ class XKCD(Dataset):
             self.data_matrix[:, 1] = np.cos(theta)
             self.data_matrix[:, 2] = np.tanh(theta)
         elif coordinate_system == 'fft':
-            self._original_data_matrix = self.data_matrix
             data = self.data_matrix.copy()
             resolutions = [fft_resolution] * 3
             gx, gy, gz = np.meshgrid(*[np.arange(r) for r in resolutions])
