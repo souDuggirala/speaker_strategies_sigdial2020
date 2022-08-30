@@ -17,7 +17,7 @@ import pyromancy.reader as reader
 import pyromancy.subscribers as sub
 import numpy as np
 import pandas as pd
-from scipy.special import softmax
+from scipy.special import softmax, expit
 import torch
 import tqdm
 
@@ -110,6 +110,7 @@ def main():
     exp.log_exp_start()
 
     hparams.results_filepath = exp.expand_to_trial_path("results.csv")
+    #hparams.results_pickle_filepath = exp.expand_to_trial_path("results.pkl")
     hparams.hparams_filepath = exp.expand_to_trial_path("hparams.yaml")
     hparams.save(hparams.hparams_filepath)
 
@@ -173,18 +174,12 @@ def main():
     print("Monroe perplexity across data: " + str(2**monroe_mean_entropy))
     compxkcd_mean_entropy = (results_df['CompositionalXKCD entropy'].dot(results_df['batch weight'])) / (results_df['batch weight'].sum())   
     print("CompositionalXKCD perplexity across data: " + str(2**compxkcd_mean_entropy))
+    
     print("Perplexities by split")
     print(2**results_df.groupby("split").apply(lambda x: x[['Monroe entropy','CompositionalXKCD entropy']].apply(lambda col : col.dot(x['batch weight']) / x['batch weight'].sum())))
 
-    #for each word in sequence, the max softmax output across colorspace (softmax turns phi logits into probabilities)
-    max_across_colorspace = results_df['CompositionalXKCD output'].apply(lambda x: softmax(x, axis = 2).max(axis = 2))
-    percent_close_to_1 = max_across_colorspace.apply(lambda x: (x>0.999).sum()).sum()/max_across_colorspace.apply(lambda x: x.size).sum()
-    print("Frequency of softmax phi output being close to 1 somewhere in colorspace: " + str(percent_close_to_1))
-    mean_max_output = max_across_colorspace.apply(lambda x: x.sum()).sum()/max_across_colorspace.apply(lambda x: x.size).sum()
-    print("Mean of the max softmax phi outputs: " + str(mean_max_output))
-
     #have trouble pickling because df is too large
-    #results_df.head().to_pickle(hparams.results_filepath)
+    #results_df.head(50).to_pickle(hparams.results_pickle_filepath)
     results_df.to_csv(hparams.results_filepath, index = None)
     exp.log_exp_end()
 
