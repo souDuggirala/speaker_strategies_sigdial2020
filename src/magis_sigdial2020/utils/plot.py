@@ -352,35 +352,62 @@ class CompositionalColorspacePlotter(ColorspacePlotter):
                                         linestyles=['--', '-'], figsize=(15, 5), title_prefix='', 
                                         num_to_scatter=-1, scatter_seed=0):
         
+        #to stay consistent with contour_plot above, input position 0 is after START, so the input seq_positions is moved forward one spot
+        seq_positions = np.array(seq_positions)+1
+
         color_term_indices = self.color_term_to_indices(color_term)
         
         #use intersection to get points where all words in color_term occur in their seq_positions
         if len(color_term_indices)==1:
             target_indices, row_indices = self._seqword2rows[(color_term_indices[0], seq_positions[0])]
         else:
-            row_indices = reduce(np.intersect1d([self._seqword2rows[(word_index, seq_position)] for word_index in color_term_indices for seq_position in seq_positions]))
+            target_indices = reduce(np.intersect1d, [self._seqword2rows[(word_index, seq_position)][0] for word_index, seq_position in zip(color_term_indices, seq_positions)])
+            row_indices = reduce(np.intersect1d, [self._seqword2rows[(word_index, seq_position)][1] for word_index, seq_position in zip(color_term_indices, seq_positions)])
+        if len(target_indices) == 0:
+            print("No points were found")
+            return
+        
+        if num_to_scatter>-1:
+            common_indices = np.arange(len(target_indices))
+            random_state = np.random.RandomState(seed=scatter_seed)
+            subset = random_state.choice(
+                common_indices, 
+                size=min(num_to_scatter, len(common_indices)), 
+                replace=False
+            )
+            target_indices = target_indices[subset]
+            row_indices = row_indices[subset]
+
         hsv_values = self.comp_xkcd._original_data_matrix[row_indices]
         p_word, phi = self.apply_model_to_subset(target_indices)
         activations = p_word if target=='p_word' else phi
         activations = activations[:,seq_positions, color_term_indices].prod(axis = 1)
+
+        xkcd_row_indices = self._label2rows[self.xkcd.color_vocab.lookup_token(color_term)]
+        common_indices = np.intersect1d(row_indices,xkcd_row_indices,return_indices=True)[1]
+        xkcd_hsv_values = hsv_values[common_indices]
+        xkcd_activations = activations[common_indices]
 
         if len(title_prefix) > 0:
             title_prefix = title_prefix.strip() + ' '
 
         if dim=='2d':
             fig, axes = plt.subplots(1, 2, figsize=figsize)
-            img = axes[0].scatter(hsv_values[:,0],hsv_values[:,1], c = activations, marker = 'o', cmap = plt.hot())
+            img = axes[0].scatter(hsv_values[:,0],hsv_values[:,1], c = activations, marker = 'o', cmap = plt.hot(), alpha = 0.4)
+            img_xkcd = axes[0].scatter(xkcd_hsv_values[:,0],xkcd_hsv_values[:,1], c = xkcd_activations, marker = '^', cmap = plt.hot(), s=65, alpha = 1)
             plt.colorbar(img, ax = axes[0])
             axes[0].set_xlabel('Hue')
             axes[0].set_ylabel('Saturation')
-            img = axes[1].scatter(hsv_values[:,0],hsv_values[:,2], c = activations, marker = 'o', cmap = plt.hot())
+            img = axes[1].scatter(hsv_values[:,0],hsv_values[:,2], c = activations, marker = 'o', cmap = plt.hot(), alpha = 0.4)
+            img_xkcd = axes[1].scatter(xkcd_hsv_values[:,0],xkcd_hsv_values[:,2], c = xkcd_activations, marker = '^', cmap = plt.hot(), s=65, alpha = 1)
             plt.colorbar(img, ax = axes[1])
             axes[1].set_xlabel('Hue')
             axes[1].set_ylabel('Value')
         else:
             fig = plt.figure(figsize=figsize)
             ax = fig.add_subplot(projection='3d')
-            img = ax.scatter(hsv_values[:,0],hsv_values[:,1],hsv_values[:,2], c = activations, marker = 'o', cmap = plt.hot())
+            img = ax.scatter(hsv_values[:,0],hsv_values[:,1],hsv_values[:,2], c = activations, marker = 'o', cmap = plt.hot(), alpha = 0.4)
+            img_xkcd = ax.scatter(xkcd_hsv_values[:,0], xkcd_hsv_values[:,1], xkcd_hsv_values[:,2], c = xkcd_activations, marker = '^', cmap = plt.hot(), s=65, alpha = 1)
             fig.colorbar(img)
             ax.set_xlabel('Hue')
             ax.set_ylabel('Value')
@@ -389,16 +416,6 @@ class CompositionalColorspacePlotter(ColorspacePlotter):
         plt.tight_layout()
         plt.subplots_adjust(top=0.9)
         if target == "phi":
-            plt.suptitle(f'Applicability (phi) of points containing {color_term} in colorspace')
+            plt.suptitle(f'Applicability (phi) of points in colorspace containing {color_term} at positions {seq_positions-1} from end')
         elif target == "p_word":
-            plt.suptitle(f'Probability of points containing {color_term} in colorspace')
-
-
-'''
-Plotting issues/features:
-
-markers for full vs subset in scatter plot
-why is the colormap scale the way it is?
-choose only a certain number of points to scatter
-Error messages for predictable errors, so that I don't think they are bugs
-'''
+            plt.suptitle(f'Probability of points in colorspace containing {color_term} at positions {seq_positions-1} from end')
