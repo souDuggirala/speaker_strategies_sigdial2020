@@ -15,6 +15,7 @@ import torch
 import tqdm
 
 BY_SEQ_POSITION = True
+REPLACE_NAN_WITH_0 = True
 
 RUNTIME_INFO = {
     "LAB_SUBDIR_ROOT": Path(__file__).absolute().parents[1]
@@ -104,8 +105,7 @@ def main():
     # TODO: if this is too much; do it col by col. 
     if BY_SEQ_POSITION:
         #Compute percentiles separately for each position in sequence
-        by_sequence_position = np.transpose(teacher_phi, (1,0,2)) #switch the batch and seq len dims
-        percentiles = np.percentile(by_sequence_position, hparams.normalizing_percentile, axis=1)
+        percentiles = np.percentile(teacher_phi, hparams.normalizing_percentile, axis=0) #percentile over batch dimension
         print("percentiles computed")
         gc.collect()
     else:
@@ -139,6 +139,10 @@ def main():
     normalized_teacher_phi = teacher_phi / percentiles
     del teacher_phi
     gc.collect()
+
+    if REPLACE_NAN_WITH_0:
+        normalized_teacher_phi = np.nan_to_num(normalized_teacher_phi, copy = False)
+
     print(f"Normalized; max is {normalized_teacher_phi.max()}")
 
     normalized_teacher_phi = np.clip(normalized_teacher_phi, 0, 1)
