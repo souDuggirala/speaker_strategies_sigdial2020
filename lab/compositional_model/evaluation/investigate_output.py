@@ -1,12 +1,16 @@
 import os
+import sys
 import pathlib
+import argparse
 import numpy as np
 from scipy.special import softmax, expit
 import gc
 
+from magis_sigdial2020.hyper_params import HyperParameters
 import pyromancy
 from pyromancy.utils import get_args
 import pyromancy.reader as reader
+import pyromancy.subscribers as sub
 import torch
 
 from magis_sigdial2020.models.xkcd_model import CompositionalModel, CompositionalXKCDModel
@@ -20,8 +24,6 @@ RUNTIME_INFO = {
 
 to_numpy = lambda x: x.cpu().detach().numpy()
 
-DEVICE = 'cpu'
-
 def get_specific_args(exp_name, trial_name):
     exp = reader.SingleExperimentReader(exp_name, filter_unfinished = False)
     trial_map = {os.path.split(trial_path)[1]: trial_path for trial_path in exp.all_trial_paths}
@@ -29,14 +31,44 @@ def get_specific_args(exp_name, trial_name):
     args.trial_path = trial_map[trial_name]
     return args
 
+def parse_hparams():
+    """Input a YAML file 
+    
+    YAML format:
+        
+        # experiment settings
+        experiment_name: E004_evaluate_on_xkcd
+        trial_name: published_version
+        root_output_path: "{LAB_SUBDIR_ROOT}/logs"
+        device: cuda
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument("YAML_CONFIG", help='')
+    hparams = HyperParameters.load(parser.parse_args().YAML_CONFIG, RUNTIME_INFO)
+    return hparams
+
+hparams = parse_hparams()
+pyromancy.settings.set_root_output_path(hparams.root_output_path)
+exp = pyromancy.initialize(
+    experiment_name=hparams.experiment_name,
+    subscribers=[sub.DBSubscriber()],
+    trial_name=hparams.trial_name
+)
+exp.log_exp_start()
+
+hparams.output_filepath = exp.expand_to_trial_path("output.txt")
+hparams.hparams_filepath = exp.expand_to_trial_path("hparams.yaml")
+hparams.save(hparams.hparams_filepath)
+sys.stdout = open(hparams.output_filepath, 'w')
+
 compositional_xkcd_model = CompositionalXKCDModel.make(
-    get_specific_args('E007_CompositionalXKCDModel', 'trial6'),
+    get_specific_args(hparams.target_compositional_xkcd_experiment, hparams.target_compositional_xkcd_trial),
     reload=True, eval_mode=True)
-compositional_xkcd_model.to(DEVICE)
+compositional_xkcd_model.to(hparams.device)
 
-dataset = CompositionalXKCD.from_settings(coordinate_system = "hue")
+dataset = CompositionalXKCD.from_settings(coordinate_system = hparams.xkcd_coordinate_system)
 
-for split in ['train', 'val', 'test']:
+for split in ['train', 'val']:
     dataset.set_split(split)
     print(f"Split {split}")
 
@@ -44,7 +76,7 @@ for split in ['train', 'val', 'test']:
                 batch_size=256, 
                 shuffle=False, 
                 drop_last=False,
-                device=DEVICE)
+                device=hparams.device)
 
     #phi_logit = []
     phi = []
@@ -90,6 +122,7 @@ for split in ['train', 'val', 'test']:
 
     gc.collect()
 
+exp.log_exp_end()
 
 
 '''

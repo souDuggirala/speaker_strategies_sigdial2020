@@ -1,0 +1,8 @@
+experiment_name: E009_investigate_max_phi
+trial_name: trial5_teacher_phi_weight_500
+root_output_path: "/common/users/ssd122/speaker_strategies_storage/compositional_model/logs"
+xkcd_coordinate_system: fft
+device: cpu
+
+target_compositional_xkcd_experiment: E007_CompositionalXKCDModel
+target_compositional_xkcd_trial: trial5_teacher_phi_weight_500
