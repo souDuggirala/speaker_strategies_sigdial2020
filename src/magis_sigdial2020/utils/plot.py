@@ -383,8 +383,9 @@ class CompositionalColorspacePlotter(ColorspacePlotter):
         activations = p_word if target=='p_word' else phi
         activations = activations[:,seq_positions, color_term_indices].prod(axis = 1)
 
+        #pick out points whose full description is color_term to mark with triangle
         xkcd_row_indices = self._label2rows[self.xkcd.color_vocab.lookup_token(color_term)]
-        common_indices = np.intersect1d(row_indices,xkcd_row_indices,return_indices=True)[1]
+        common_indices = np.intersect1d(row_indices,xkcd_row_indices,return_indices=True)[1] #get indices in row_indices that are full descriptions
         xkcd_hsv_values = hsv_values[common_indices]
         xkcd_activations = activations[common_indices]
 
@@ -398,11 +399,15 @@ class CompositionalColorspacePlotter(ColorspacePlotter):
             plt.colorbar(img, ax = axes[0])
             axes[0].set_xlabel('Hue')
             axes[0].set_ylabel('Saturation')
+            axes[0].set_xlim(0,1)
+            axes[0].set_ylim(0,1)
             img = axes[1].scatter(hsv_values[:,0],hsv_values[:,2], c = activations, marker = 'o', cmap = plt.hot(), alpha = 0.4)
             img_xkcd = axes[1].scatter(xkcd_hsv_values[:,0],xkcd_hsv_values[:,2], c = xkcd_activations, marker = '^', cmap = plt.hot(), s=65, alpha = 1)
             plt.colorbar(img, ax = axes[1])
             axes[1].set_xlabel('Hue')
             axes[1].set_ylabel('Value')
+            axes[1].set_xlim(0,1)
+            axes[1].set_ylim(0,1)
         else:
             fig = plt.figure(figsize=figsize)
             ax = fig.add_subplot(projection='3d')
@@ -410,8 +415,11 @@ class CompositionalColorspacePlotter(ColorspacePlotter):
             img_xkcd = ax.scatter(xkcd_hsv_values[:,0], xkcd_hsv_values[:,1], xkcd_hsv_values[:,2], c = xkcd_activations, marker = '^', cmap = plt.hot(), s=65, alpha = 1)
             fig.colorbar(img)
             ax.set_xlabel('Hue')
-            ax.set_ylabel('Value')
-            ax.set_zlabel('Saturation')
+            ax.set_ylabel('Saturation')
+            ax.set_zlabel('Value')
+            ax.set_xlim(0,1)
+            ax.set_ylim(0,1)
+            ax.set_zlim(0,1)
 
         plt.tight_layout()
         plt.subplots_adjust(top=0.9)
