@@ -99,17 +99,18 @@ for split in ['train', 'val']:
     #print(phi_logit_max_across_colorspace.mean(axis=0)) #[0.9461505 0.6857982 3.0268333 3.7105126 3.3004346 2.5877583]
     #print(expit(phi_logit_max_across_colorspace.mean(axis=0))) #[0.7203403  0.66503155 0.95377177 0.9761193  0.96444374 0.93006957]
 
-    phi_max_across_colorspace = phi.max(axis=2)
+    phi_max_across_colorspace = phi.max(axis=0)
+
     print("Mean phi max across colorspace, by seq position")
-    print(phi_max_across_colorspace.mean(axis=0))#[0.71257055 0.6310683  0.8361427  0.94985276 0.9258338  0.91956717]
+    print(phi_max_across_colorspace.mean(axis=1))
     print("Max of the phi max across colorspace, by seq position")
-    print(phi_max_across_colorspace.max(axis=0))#[0.9535155  0.9997931  0.99999976 0.9999863  0.9999778  0.9997898 ]
+    print(phi_max_across_colorspace.max(axis=1))
     print("Min of the phi max across colorspace, by seq position")
-    print(phi_max_across_colorspace.min(axis=0))#[0.44485766 0.05784886 0.07593707 0.72008616 0.7996646  0.8190986 ]
+    print(phi_max_across_colorspace.min(axis=1))
 
     print("Percent of the time max phi across colorspace is >.90")
-    print((phi_max_across_colorspace>0.90).sum()/phi_max_across_colorspace.size) #0.4471171710657638
-    print((phi_max_across_colorspace>0.90).sum(axis=0)/phi_max_across_colorspace.shape[0]) #[0.00741628 0.08894007 0.681966   0.71006495 0.55540099 0.63891474]
+    print((phi_max_across_colorspace>0.90).sum()/phi_max_across_colorspace.size)
+    print((phi_max_across_colorspace>0.90).sum(axis=1)/phi_max_across_colorspace.shape[1])
 
     #check that alpha is not 0
     print("Mean alpha logit: " + str(alpha_logit.mean()))#-16.54223
