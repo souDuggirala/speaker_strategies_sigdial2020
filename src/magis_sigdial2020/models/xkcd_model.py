@@ -152,11 +152,11 @@ class CompositionalModel(nn.Module):
             num_layers = self.num_lstm_layers, 
             dropout = 0.2,
             batch_first = True)
-        self.fc = nn.Linear(self.lstm_size, self.vocab_size) #!is the input size really lstm_size? i.e. is the output of the lstm lstm_size?
+        self.fc = nn.Linear(self.lstm_size, self.vocab_size)
     
     #Teacher forcing: all correct color words inputted during training, not taken from previous step
     #https://www.kdnuggets.com/2020/07/pytorch-lstm-text-generation-tutorial.html
-    def forward(self, x_input, y_color_name, in_state = None):
+    def forward(self, x_input, y_color_name):
         output = {}
         
         embedded = self.embedding(y_color_name)
@@ -170,10 +170,7 @@ class CompositionalModel(nn.Module):
         lstm_input = torch.cat((embedded, x_input), -1)
 
         #pass through LSTM and FC layers to get logits
-        if in_state is None:
-            lstm_output, out_state = self.lstm(lstm_input)
-        else:
-            lstm_output, out_state = self.lstm(lstm_input, in_state)
+        lstm_output, _ = self.lstm(lstm_input)
         logits = self.fc(lstm_output)
 
         output['logits'] = logits
@@ -183,7 +180,6 @@ class CompositionalModel(nn.Module):
         output['word_score'] = torch.exp(output['log_word_score'])
         output['S0_probability'] = F.softmax(output['log_word_score'], dim=2)
         output['probability'] = F.softmax(output['word_score'], dim=2)
-        output['state'] = out_state
 
         return output
 
@@ -220,8 +216,14 @@ class CompositionalXKCDModel(nn.Module):
         self.embedding = nn.Embedding(
             num_embeddings = self.vocab_size, 
             embedding_dim = self.embedding_dim)
-        self.lstm = nn.LSTM(
+        self.phi_lstm = nn.LSTM(
             input_size = self.input_size + self.embedding_dim, 
+            hidden_size = self.lstm_size, 
+            num_layers = self.num_lstm_layers, 
+            dropout = 0.2,
+            batch_first = True)
+        self.alpha_lstm = nn.LSTM(
+            input_size = self.embedding_dim, 
             hidden_size = self.lstm_size, 
             num_layers = self.num_lstm_layers, 
             dropout = 0.2,
@@ -231,7 +233,7 @@ class CompositionalXKCDModel(nn.Module):
 
     #Teacher forcing: all correct color words inputted during training, not taken from previous step
     #https://www.kdnuggets.com/2020/07/pytorch-lstm-text-generation-tutorial.html
-    def forward(self, x_input, y_color_name, in_state = None):
+    def forward(self, x_input, y_color_name):
         output = {}
         
         embedded = self.embedding(y_color_name)
@@ -242,24 +244,21 @@ class CompositionalXKCDModel(nn.Module):
             #concatenated shape (batch_size, seq_len, input_size + embedding_dim)
         x_input = torch.unsqueeze(x_input,1)
         x_input = x_input.expand(-1, self.max_seq_len, -1)
-        lstm_input = torch.cat((embedded, x_input), -1)
+        phi_lstm_input = torch.cat((embedded, x_input), -1)
 
         #pass through LSTM and FC layers to get logits and alpha
-        if in_state is None:
-            lstm_output, out_state = self.lstm(lstm_input)
-        else:
-            lstm_output, out_state = self.lstm(lstm_input, in_state)
-        phi_logit = self.phi_fc(lstm_output)
-        alpha = self.alpha_fc(lstm_output)
+        phi_lstm_output, _ = self.phi_lstm(phi_lstm_input)
+        phi_logit = self.phi_fc(phi_lstm_output)
+        alpha_lstm_output = self.alpha_lstm(embedded)
+        alpha_logit = self.alpha_fc(alpha_lstm_output)
 
         output['phi_logit'] = phi_logit
-        output['alpha'] = alpha
+        output['alpha_logit'] = alpha_logit
         output['log_word_score'] = (
             torch_safe_log(torch.sigmoid(output['phi_logit']))
-                        + torch.log(torch.sigmoid(output['alpha']))
+                        + torch.log(torch.sigmoid(output['alpha_logit']))
         )
         output['word_score'] = torch.exp(output['log_word_score'])
         output['S0_probability'] = F.softmax(output['log_word_score'], dim=2)
-        output['state'] = out_state
 
         return output

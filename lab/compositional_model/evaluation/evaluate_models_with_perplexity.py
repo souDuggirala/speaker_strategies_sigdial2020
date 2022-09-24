@@ -66,37 +66,6 @@ def instantiate_models(hparams):
     #load XKCD compositional model
     return compositional_model, compositional_xkcd_model
 
-'''Greedy Decoding -- feed result of previous recurrent step into next'''
-#target_description contains both start and end token, so output should too
-#pred = model_output['log_word_score'][:, :-1, :] #make shape match target
-def evaluate_model_greedy(model, color_patch, hparams):
-    #fill shape (batch_size, 1) with start token
-    color_patch = color_patch.to(hparams.device)
-    start_token = torch.full((color_patch.size(dim=0), 1),1).long()
-    #end_token = torch.full((color_patch.size(dim=0), 1),2).long()
-
-    output = []
-
-    word = start_token
-    state = None
-    for i in range(hparams.max_seq_len): #a loop that goes on for 6 instead
-        word = word.to(hparams.device)
-        word_output = model(color_patch, word, state)
-
-        #in the compositional model, this probability is based on output of recurrent step
-        #in the compositional xkcd model, this probability is based on phi*alpha for each recurrent step
-        #word = torch.from_numpy(np.random.choice(model.vocab_size, p=to_numpy(word_output['S0_probability'])))
-        word = torch.argmax(word_output['S0_probability'], axis = -1)
-        state = word_output['state']
-
-        output.append(to_numpy(word_output['log_word_score']))
-
-    output = np.array(output).squeeze(axis=2)
-    output = np.transpose(output, (1,0,2))
-    output= torch.from_numpy(output)
-
-    return output
-
 def main():
     hparams = parse_hparams()
 
