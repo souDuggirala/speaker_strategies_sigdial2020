@@ -14,7 +14,8 @@ from pyromancy.utils import get_args
 import torch
 import tqdm
 
-BY_SEQ_POSITION = True
+RECURSIVE = True
+BY_SEQ_POSITION = False
 REPLACE_NAN_WITH_0 = True
 
 RUNTIME_INFO = {
@@ -45,6 +46,24 @@ def parse_hparams():
     hparams = HyperParameters.load(parser.parse_args().YAML_CONFIG)
     format_runtime_strings(hparams)
     return hparams
+
+
+#should treat padding differently? Are there are memory issues with this?
+def recurse_normalize(teacher_phi, normalizing_percentile, color_descriptions):
+    #stop condition is when teacher_phi is empty
+    if teacher_phi.shape[1]==0:
+        return
+
+    normalized_teacher_phi = np.zeros_like(teacher_phi)
+    unique_words = np.unique(color_descriptions[:,0])
+    for word in unique_words:
+        #color_descriptions is input with START included and teacher_phi is output, so percentiles calculated are conditioned on the previous word
+        indices = np.where(color_descriptions[:,0]==word)
+        percentiles = np.percentile(teacher_phi[indices,0], normalizing_percentile, axis=0)
+        normalized_teacher_phi[indices,0] = teacher_phi[indices,0]/percentiles
+        normalized_teacher_phi[indices, 1:] = recurse_normalize(teacher_phi[indices, 1:], normalizing_percentile, color_descriptions[indices, 1:])
+    
+    return normalized_teacher_phi
 
 
 def main():
@@ -101,19 +120,32 @@ def main():
 
     print("Beginning normalization")
     gc.collect()
-    
-    # TODO: if this is too much; do it col by col. 
-    if BY_SEQ_POSITION:
+     
+    if RECURSIVE:
+        color_descriptions = np.array([tup[1] for tup in dataset._target_fast])
+        normalized_teacher_phi = recurse_normalize(teacher_phi, hparams.normalizing_percentile, color_descriptions)
+        del teacher_phi
+        gc.collect()
+
+    # TODO: if this is too much; do it col by col.
+    elif BY_SEQ_POSITION:
         #Compute percentiles separately for each position in sequence
         percentiles = np.percentile(teacher_phi, hparams.normalizing_percentile, axis=0) #percentile over batch dimension
         print("percentiles computed")
         gc.collect()
+        normalized_teacher_phi = teacher_phi / percentiles
+        del teacher_phi
+        gc.collect()
+
     else:
         # Stack everything and take percentiles over all words from sequences
         # np.percentile(np.resize(a,(4,3)), 90, axis = 0)
         stacked = np.resize(teacher_phi, (teacher_phi.shape[0]+teacher_phi.shape[1], teacher_phi.shape[2]))
         percentiles = np.percentile(stacked, hparams.normalizing_percentile, axis=0) 
         print("percentiles computed")
+        gc.collect()
+        normalized_teacher_phi = teacher_phi / percentiles
+        del teacher_phi
         gc.collect()
 
     '''
@@ -135,10 +167,6 @@ def main():
             [[0.96774194, 0.92307692, 0.81081081],
             [0.24096386, 0.18181818, 0.        ]]]
     '''
-
-    normalized_teacher_phi = teacher_phi / percentiles
-    del teacher_phi
-    gc.collect()
 
     if REPLACE_NAN_WITH_0:
         normalized_teacher_phi = np.nan_to_num(normalized_teacher_phi, copy = False)
