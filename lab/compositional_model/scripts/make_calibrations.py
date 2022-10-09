@@ -33,7 +33,7 @@ def format_runtime_strings(hparams):
 
 
 def get_specific_args(exp_name, trial_name):
-    exp = reader.SingleExperimentReader(exp_name)
+    exp = reader.SingleExperimentReader(exp_name)#, filter_unfinished=False)
     trial_map = {os.path.split(trial_path)[1]: trial_path for trial_path in exp.all_trial_paths}
     args = get_args(trial_map[trial_name])
     args.trial_path = trial_map[trial_name]
@@ -47,20 +47,33 @@ def parse_hparams():
     format_runtime_strings(hparams)
     return hparams
 
+'''
+Done recursively in order to condition normalization for each sequence position on all the positions before it.
+For sequence position 1, the token conditioned on is always START, so sequence position 1 is normalized across the whole dataset
+For sequence position 2, there are some number of unique tokens in preceding position, so the algorithm iterates normalize separately for each unique token
+For sequence position 3+, the normalization must be done not only on the immediately preceding unique tokens, but the combinations of all unique tokens preceding
+After normalizing sequence position s_n | s_1, ..., s_n-1, recursively normalize conditioned on s_n, to get s_n+1 | s_1, ..., s_n
 
-#should treat padding differently? Are there are memory issues with this?
+color_descriptions is input to the model (with START included) and teacher_phi is output of the model
+    the rows of both should correspond (because shuffle was set to false in batch_generator)
+    the shapes should be the same except for the sequence position axis -- color_descriptions should be 1 greater to include START
+'''
 def recurse_normalize(teacher_phi, normalizing_percentile, color_descriptions):
     #stop condition is when teacher_phi is empty
     if teacher_phi.shape[1]==0:
         return
 
     normalized_teacher_phi = np.zeros_like(teacher_phi)
+    #find the unique words in the current sequence position, then iterate to normalize conditioned on these unique words
     unique_words = np.unique(color_descriptions[:,0])
     for word in unique_words:
-        #color_descriptions is input with START included and teacher_phi is output, so percentiles calculated are conditioned on the previous word
-        indices = np.where(color_descriptions[:,0]==word)
+        #choose the samples corresponding to unique word being the input
+        indices = np.where(color_descriptions[:,0]==word)[0]
+        #normalize over those samples
         percentiles = np.percentile(teacher_phi[indices,0], normalizing_percentile, axis=0)
+        #calculate normalized phi for the current sequence position and chosen samples
         normalized_teacher_phi[indices,0] = teacher_phi[indices,0]/percentiles
+        #normalize the next sequence position step recursively, only passing on the chosen samples
         normalized_teacher_phi[indices, 1:] = recurse_normalize(teacher_phi[indices, 1:], normalizing_percentile, color_descriptions[indices, 1:])
     
     return normalized_teacher_phi
@@ -124,8 +137,6 @@ def main():
     if RECURSIVE:
         color_descriptions = np.array([tup[1] for tup in dataset._target_fast])
         normalized_teacher_phi = recurse_normalize(teacher_phi, hparams.normalizing_percentile, color_descriptions)
-        del teacher_phi
-        gc.collect()
 
     # TODO: if this is too much; do it col by col.
     elif BY_SEQ_POSITION:
@@ -134,8 +145,6 @@ def main():
         print("percentiles computed")
         gc.collect()
         normalized_teacher_phi = teacher_phi / percentiles
-        del teacher_phi
-        gc.collect()
 
     else:
         # Stack everything and take percentiles over all words from sequences
@@ -145,8 +154,6 @@ def main():
         print("percentiles computed")
         gc.collect()
         normalized_teacher_phi = teacher_phi / percentiles
-        del teacher_phi
-        gc.collect()
 
     '''
     Division works the way I would want it to in BY_SEQ_POSITION case
@@ -167,6 +174,10 @@ def main():
             [[0.96774194, 0.92307692, 0.81081081],
             [0.24096386, 0.18181818, 0.        ]]]
     '''
+
+    assert normalized_teacher_phi.shape == teacher_phi.shape
+    del teacher_phi
+    gc.collect()
 
     if REPLACE_NAN_WITH_0:
         normalized_teacher_phi = np.nan_to_num(normalized_teacher_phi, copy = False)

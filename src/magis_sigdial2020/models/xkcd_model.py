@@ -249,7 +249,7 @@ class CompositionalXKCDModel(nn.Module):
         #pass through LSTM and FC layers to get logits and alpha
         phi_lstm_output, _ = self.phi_lstm(phi_lstm_input)
         phi_logit = self.phi_fc(phi_lstm_output)
-        alpha_lstm_output = self.alpha_lstm(embedded)
+        alpha_lstm_output, _ = self.alpha_lstm(embedded)
         alpha_logit = self.alpha_fc(alpha_lstm_output)
 
         output['phi_logit'] = phi_logit
