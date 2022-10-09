@@ -1,12 +1,12 @@
 batch_size: 512
 ce_weight: 1.0
 checkpoint_metric: perplexity
-cuda: false
-device: cpu
+cuda: true
+device: cuda
 embedding_dim: 10
 experiment_name: E007_CompositionalXKCDModel
 hparams_load_path: ../configs/E007_CompositionalXKCDModel.yaml
-input_size: 3
+input_size: 54
 learning_rate: 0.01
 lstm_size: 32
 max_seq_len: 6
@@ -22,4 +22,4 @@ use_ce: true
 use_teacher_phi: true
 vocab_size: 340
 weight_decay: 0.0
-xkcd_coordinate_system: hue
+xkcd_coordinate_system: fft

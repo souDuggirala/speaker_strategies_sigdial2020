@@ -1,11 +1,11 @@
 batch_size: 256
 checkpoint_metric: perplexity
-cuda: false
-device: cpu
+cuda: true
+device: cuda
 embedding_dim: 10
 experiment_name: E005_CompositionalModel
 hparams_load_path: ../configs/E005_CompositionalModel.yaml
-input_size: 3
+input_size: 54
 learning_rate: 0.01
 lstm_size: 32
 max_seq_len: 6
@@ -17,4 +17,4 @@ seed: 1337
 trial_name: trial1
 vocab_size: 340
 weight_decay: 0.0
-xkcd_coordinate_system: hue
+xkcd_coordinate_system: fft
