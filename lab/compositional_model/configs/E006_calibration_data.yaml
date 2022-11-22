@@ -1,8 +1,13 @@
 experiment_name: E006_calibrations
-trial_name: 99th_percentile
-root_output_path: "/Users/soumyadugg/speaker_strategies_sigdial2020/lab/compositional_model/logs"
+trial_name: 99th_percentile-probs
+root_output_path: "/common/users/ssd122/speaker_strategies_storage/compositional_model/logs"
 target_experiment_name: E005_CompositionalModel
-target_trial_name: published_version 
+target_trial_name: trial1-probs
+#either 'phis' or 'probs'
+teacher_type: probs
+#'recursive' 'by_seq_position' or 'stack'
+normalization_method: recursive
+replace_nan_with_0: True
 
 normalizing_percentile: 99
 xkcd_coordinate_system: fft

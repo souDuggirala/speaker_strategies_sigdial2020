@@ -14,10 +14,6 @@ from pyromancy.utils import get_args
 import torch
 import tqdm
 
-RECURSIVE = True
-BY_SEQ_POSITION = False
-REPLACE_NAN_WITH_0 = True
-
 RUNTIME_INFO = {
     "LAB_SUBDIR_ROOT": Path(__file__).absolute().parents[1]
 }
@@ -48,7 +44,8 @@ def parse_hparams():
     return hparams
 
 '''
-Done recursively in order to condition normalization for each sequence position on all the positions before it.
+REUSING SAME LOGIC FOR CUMULATIVE CASE, HAVE TO REWRITE THIS  DOCUMENTATION AND RECHECK THIS LOGIC
+Recursively normalize phi in order to condition normalization for each sequence position on all the positions before it.
 For sequence position 1, the token conditioned on is always START, so sequence position 1 is normalized across the whole dataset
 For sequence position 2, there are some number of unique tokens in preceding position, so the algorithm iterates normalize separately for each unique token
 For sequence position 3+, the normalization must be done not only on the immediately preceding unique tokens, but the combinations of all unique tokens preceding
@@ -58,26 +55,29 @@ color_descriptions is input to the model (with START included) and teacher_phi i
     the rows of both should correspond (because shuffle was set to false in batch_generator)
     the shapes should be the same except for the sequence position axis -- color_descriptions should be 1 greater to include START
 '''
-def recurse_normalize(teacher_phi, normalizing_percentile, color_descriptions):
-    #stop condition is when teacher_phi is empty
-    if teacher_phi.shape[1]==0:
+def recurse_normalize(teacher, normalizing_percentile, color_descriptions):
+    #stop condition is when teacher is empty
+    if teacher.shape[1]==0:
         return
 
-    normalized_teacher_phi = np.zeros_like(teacher_phi)
+    normalized_teacher = np.zeros_like(teacher)
     #find the unique words in the current sequence position, then iterate to normalize conditioned on these unique words
     unique_words = np.unique(color_descriptions[:,0])
     for word in unique_words:
         #choose the samples corresponding to unique word being the input
         indices = np.where(color_descriptions[:,0]==word)[0]
         #normalize over those samples
-        percentiles = np.percentile(teacher_phi[indices,0], normalizing_percentile, axis=0)
-        #calculate normalized phi for the current sequence position and chosen samples
-        normalized_teacher_phi[indices,0] = teacher_phi[indices,0]/percentiles
+        #at this step, the shapes are different between teacher_phi and teacher_prob, but it should be doing the same thing
+            #teacher_phi[indices,0] shape = (num_samples, vocab_size) ----> percentile_phi (axis = 0) shape = (vocab_size,)
+                #calculating a percentile separately for each item in vocabulary
+            #teacher_prob[indices,0] shape = (num_samples,) ----> percentile_phi (axis = 0) shape = a single value
+        percentile = np.percentile(teacher[indices,0], normalizing_percentile, axis=0)
+        #calculate normalized value for the current sequence position and chosen samples
+        normalized_teacher[indices,0] = teacher[indices,0]/percentile
         #normalize the next sequence position step recursively, only passing on the chosen samples
-        normalized_teacher_phi[indices, 1:] = recurse_normalize(teacher_phi[indices, 1:], normalizing_percentile, color_descriptions[indices, 1:])
-    
-    return normalized_teacher_phi
+        normalized_teacher[indices, 1:] = recurse_normalize(teacher[indices, 1:], normalizing_percentile, color_descriptions[indices, 1:])
 
+    return normalized_teacher 
 
 def main():
     hparams = parse_hparams()
@@ -88,9 +88,9 @@ def main():
         trial_name=hparams.trial_name
     )
     
-    hparams.unnormalized_filepath = exp.expand_to_trial_path("unnormalized_phis.npy")
+    hparams.unnormalized_filepath = exp.expand_to_trial_path(f"unnormalized_{hparams.teacher_type}.npy")
     hparams.normalized_filepath = exp.expand_to_trial_path(
-        f"calibrated_phis_{hparams.normalizing_percentile}percentile.npy"
+        f"calibrated_{hparams.teacher_type}_{hparams.normalizing_percentile}percentile.npy"
     )
     
     dataset = CompositionalXKCD.from_settings(coordinate_system=hparams.xkcd_coordinate_system)
@@ -107,10 +107,11 @@ def main():
     
     if os.path.exists(hparams.unnormalized_filepath):
         print("Unnormalized exists; loading")
-        teacher_phi = np.load(hparams.unnormalized_filepath)
+        teacher = np.load(hparams.unnormalized_filepath)
     else:
         print("Unnormalized does not exist; making")
-        teacher_phi = []
+        teacher = []
+        model_output_key = 'logits' if hparams.teacher_type == 'phis' else 'Cum_probability'
         bar = tqdm.tqdm(total=len(dataset))
         
         # TODO: assess whether this should be on GPU; or do it not matter?
@@ -119,41 +120,45 @@ def main():
             shuffle=False, 
             drop_last=False
         )
+        i = 0
         for batch in batch_generator:
-            teacher_phi.append(
-                torch.sigmoid(model(batch['x_color_value'], batch["y_color_name"])['logits'])
+            teacher.append(
+                #not return right shape for probs case: returning (6,6) when it should be returning (1024, 6)
+                torch.sigmoid(model(batch['x_color_value'], batch["y_color_name"])[model_output_key])
                 .detach().cpu().numpy().astype(np.float32) 
             )
-            bar.update(teacher_phi[-1].shape[0])
-        teacher_phi = np.concatenate(teacher_phi).astype(np.float32)
-        assert teacher_phi.shape == (len(dataset), model.max_seq_len, len(dataset.color_vocab)+1)
+            bar.update(teacher[-1].shape[0])
+        teacher = np.concatenate(teacher).astype(np.float32)
+        if model_output_key == 'logits':
+            assert teacher.shape == (len(dataset), model.max_seq_len, len(dataset.color_vocab)+1)
+        else:
+            assert teacher.shape == (len(dataset), model.max_seq_len)
     
-        np.save(hparams.unnormalized_filepath, teacher_phi)
+        np.save(hparams.unnormalized_filepath, teacher)
         print("unnormalized cached")
 
     print("Beginning normalization")
     gc.collect()
      
-    if RECURSIVE:
+    if hparams.normalization_method == 'recursive':
         color_descriptions = np.array([tup[1] for tup in dataset._target_fast])
-        normalized_teacher_phi = recurse_normalize(teacher_phi, hparams.normalizing_percentile, color_descriptions)
+        normalized_teacher = recurse_normalize(teacher, hparams.normalizing_percentile, color_descriptions)
 
-    # TODO: if this is too much; do it col by col.
-    elif BY_SEQ_POSITION:
+    elif hparams.normalization_method == 'by_seq_position':
         #Compute percentiles separately for each position in sequence
-        percentiles = np.percentile(teacher_phi, hparams.normalizing_percentile, axis=0) #percentile over batch dimension
+        percentiles = np.percentile(teacher, hparams.normalizing_percentile, axis=0) #percentile over batch dimension
         print("percentiles computed")
         gc.collect()
-        normalized_teacher_phi = teacher_phi / percentiles
+        normalized_teacher = teacher / percentiles
 
     else:
         # Stack everything and take percentiles over all words from sequences
         # np.percentile(np.resize(a,(4,3)), 90, axis = 0)
-        stacked = np.resize(teacher_phi, (teacher_phi.shape[0]+teacher_phi.shape[1], teacher_phi.shape[2]))
+        stacked = np.resize(teacher, (teacher.shape[0]+teacher.shape[1], teacher.shape[2]))
         percentiles = np.percentile(stacked, hparams.normalizing_percentile, axis=0) 
         print("percentiles computed")
         gc.collect()
-        normalized_teacher_phi = teacher_phi / percentiles
+        normalized_teacher = teacher / percentiles
 
     '''
     Division works the way I would want it to in BY_SEQ_POSITION case
@@ -175,19 +180,19 @@ def main():
             [0.24096386, 0.18181818, 0.        ]]]
     '''
 
-    assert normalized_teacher_phi.shape == teacher_phi.shape
-    del teacher_phi
+    assert normalized_teacher.shape == teacher.shape
+    del teacher
     gc.collect()
 
-    if REPLACE_NAN_WITH_0:
-        normalized_teacher_phi = np.nan_to_num(normalized_teacher_phi, copy = False)
+    if hparams.replace_nan_with_0 is True:
+        normalized_teacher = np.nan_to_num(normalized_teacher, copy = False)
 
-    print(f"Normalized; max is {normalized_teacher_phi.max()}")
+    print(f"Normalized; max is {normalized_teacher.max()}")
 
-    normalized_teacher_phi = np.clip(normalized_teacher_phi, 0, 1)
-    print(f"Clipped; max is {normalized_teacher_phi.max()}")
+    normalized_teacher = np.clip(normalized_teacher, 0, 1)
+    print(f"Clipped; max is {normalized_teacher.max()}")
     
-    np.save(hparams.normalized_filepath, normalized_teacher_phi)
+    np.save(hparams.normalized_filepath, normalized_teacher)
     print("Normalized cached")
 
 if __name__ == "__main__":

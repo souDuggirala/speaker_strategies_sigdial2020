@@ -179,7 +179,9 @@ class CompositionalModel(nn.Module):
         )
         output['word_score'] = torch.exp(output['log_word_score'])
         output['S0_probability'] = F.softmax(output['log_word_score'], dim=2)
-        output['probability'] = F.softmax(output['word_score'], dim=2)
+        #picking those probability values that correspond to the actual y_color_name, then calculating the cumulative probability
+        probs_for_y_color_name = output['S0_probability'][:, np.arange(self.max_seq_len), y_color_name][np.arange(output['S0_probability'].shape[0]), np.arange(output['S0_probability'].shape[0])]
+        output['Cum_probability'] = torch.cumprod(probs_for_y_color_name, dim=1)
 
         return output
 
@@ -260,5 +262,8 @@ class CompositionalXKCDModel(nn.Module):
         )
         output['word_score'] = torch.exp(output['log_word_score'])
         output['S0_probability'] = F.softmax(output['log_word_score'], dim=2)
+        #picking those probability values that correspond to the actual y_color_name, then calculating the cumulative probability
+        probs_for_y_color_name = output['S0_probability'][:, np.arange(self.max_seq_len), y_color_name][np.arange(output['S0_probability'].shape[0]), np.arange(output['S0_probability'].shape[0])]
+        output['Cum_probability'] = torch.cumprod(probs_for_y_color_name, dim=1)
 
         return output

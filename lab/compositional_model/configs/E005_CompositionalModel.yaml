@@ -1,7 +1,7 @@
 # Experiment Hyper Params
-experiment_name: CompositionalModel
-trial_name: testing_version
-root_output_path: "/Users/soumyadugg/speaker_strategies_sigdial2020/lab/compositional_model/logs"
+experiment_name: E005_CompositionalModel
+trial_name: trial1-probs
+root_output_path: "/common/users/ssd122/speaker_strategies_storage/compositional_model/logs"
 xkcd_coordinate_system: fft
 
 # Training Hyper Params
@@ -23,4 +23,4 @@ vocab_size: -1
 max_seq_len: 6
 
 # Runtime params
-cuda: false
+cuda: true

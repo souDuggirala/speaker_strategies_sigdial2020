@@ -160,9 +160,11 @@ class CompositionalXKCDModelTrainer(BaseTrainer):
         
         # in the case of hyper param search; make sure same calibrated phis
         if dataset_exists:
-            current_path = self.dataset.get_teacher_phi_path()
-            hparams_path = self.hparams.teacher_phi_path
-            is_same_calibrations = (current_path == hparams_path)
+            current_teacher_phi_path = self.dataset.get_teacher_phi_path()
+            hparams_teacher_phi_path = self.hparams.teacher_phi_path
+            current_teacher_prob_path = self.dataset.get_teacher_prob_path()
+            hparams_teacher_prob_path = self.hparams.teacher_prob_path
+            is_same_calibrations = (current_teacher_phi_path == hparams_teacher_phi_path) and (current_teacher_prob_path == hparams_teacher_prob_path)
         else:
             is_same_calibrations = False
             
@@ -171,6 +173,7 @@ class CompositionalXKCDModelTrainer(BaseTrainer):
         else:
             dataset = TeacherGuidedXKCD(
                 teacher_phi_path=self.hparams.teacher_phi_path,
+                teacher_prob_path=self.hparams.teacher_prob_path,
                 xkcd_coordinate_system=self.hparams.xkcd_coordinate_system,
                 compositional=True,
                 max_seq_len = self.hparams.max_seq_len
@@ -209,6 +212,9 @@ class CompositionalXKCDModelTrainer(BaseTrainer):
         if self.hparams.use_teacher_phi:
             loss += self.hparams.teacher_phi_weight * self._bce_logit_loss(model_output['phi_logit'],
                                                                         batch_dict['teacher_phi'])
+        if self.hparams.use_teacher_prob:
+            loss += self.hparams.teacher_prob_weight * self._bce_logit_loss(model_output['Cum_probability'],
+                                                                            batch_dict['teacher_prob'])
         return loss
 
     def compute_metrics(self, batch_dict, model_output):

@@ -1,9 +1,10 @@
 # Experiment Hyper Params
 experiment_name: E007_CompositionalXKCDModel
-trial_name: published_version
-root_output_path: "/Users/soumyadugg/speaker_strategies_sigdial2020/lab/compositional_model/logs"
+trial_name: trial1-probs
+root_output_path: "/common/users/ssd122/speaker_strategies_storage/compositional_model/logs"
 xkcd_coordinate_system: fft
-teacher_phi_path: "/Users/soumyadugg/speaker_strategies_sigdial2020/lab/compositional_model/logs/E006_calibrations/99th_percentile/calibrated_phis_99percentile.npy"
+teacher_phi_path: -1
+teacher_prob_path: "/common/users/ssd122/speaker_strategies_storage/compositional_model/logs/E006_calibrations/99th_percentile-probs/calibrated_probs_99percentile.npy"
 
         
 # Training Hyper Params
@@ -17,8 +18,11 @@ patience_threshold: 4
 use_ce: true
 ce_weight: 1.0
 # loss: teacher phi / calibration
-use_teacher_phi: true
+use_teacher_phi: false
 teacher_phi_weight: 1.0
+# loss: teacher prob / calibration
+use_teacher_prob: true
+teacher_prob_weight: 1.0
 # overall l2
 weight_decay: 0.000
 
@@ -31,4 +35,4 @@ vocab_size: -1
 max_seq_len: 6
 
 # Runtime params
-cuda: false 
+cuda: true

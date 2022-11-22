@@ -1,13 +1,13 @@
 # experiment settings
 experiment_name: E008_evaluate_with_perplexity
-trial_name: trial2
+trial_name: trial1
 root_output_path: "/common/users/ssd122/speaker_strategies_storage/compositional_model/logs"
 xkcd_coordinate_system: fft
 device: cuda
 target_compositional_experiment: E005_CompositionalModel
-target_compositional_trial: trial2
+target_compositional_trial: trial1
 target_compositional_xkcd_experiment: E007_CompositionalXKCDModel
-target_compositional_xkcd_trial: trial2
+target_compositional_xkcd_trial: trial1
 
 #model settings
 max_seq_len: 6
