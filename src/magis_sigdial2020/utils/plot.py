@@ -258,7 +258,8 @@ class CompositionalColorspacePlotter(ColorspacePlotter):
                      linestyles=['--', '-'], figsize=(15, 5), title_prefix='', 
                      dim_reduce_func=np.mean, num_to_scatter=-1, scatter_seed=0):
         
-        word_indices = self.full_color_term_to_indices(color_term)
+        color_words = list(reversed(color_term.split()))
+        word_indices = self.comp_xkcd.color_vocab.map(color_words, wrap_start_end=True, add_tokens=False)
         print("Translated to indices: " + str(word_indices))
         
         #figure setup and title creation
@@ -355,7 +356,8 @@ class CompositionalColorspacePlotter(ColorspacePlotter):
         #to stay consistent with contour_plot above, input position 0 is after START, so the input seq_positions is moved forward one spot
         seq_positions = np.array(seq_positions)+1
 
-        color_term_indices = self.color_term_to_indices(color_term)
+        color_words = list(reversed(color_term.split()))
+        color_term_indices = self.comp_xkcd.color_vocab.map(color_words, wrap_start_end=False, add_tokens=False)
         
         #use intersection to get points where all words in color_term occur in their seq_positions
         if len(color_term_indices)==1:

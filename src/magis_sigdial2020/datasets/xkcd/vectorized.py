@@ -19,7 +19,7 @@ def get_xkcd_vocab():
 #returns shortened vocab of color words for compositional model instead of vocab for full color descriptions
 def get_comp_xkcd_vocab():
     with open(settings.COMP_XKCD_VOCAB, "r") as fp:
-        return Vocabulary(token_to_idx=json.load(fp))
+        return Vocabulary(token_to_idx=json.load(fp), use_start_end=True)
 
 
 def simple_stopwatch(display_string="[{i}] Elapsed: {elapsed_tick:0.2f}s ({elapsed_total:0.2f}s)", enable=False):
@@ -215,7 +215,6 @@ class XKCD(Dataset):
     def get_num_batches(self, batch_size):
         return len(self) // batch_size
 
-#!there could be an issue with resize() cutting off the string, but for now I'm sure there's no word with more than 4 words'''
 class CompositionalXKCD(XKCD):
     def __init__(self, matrix_filename, annotation_filename, coordinate_system='hue', 
                  subset_function=lambda x: x, fft_resolution=3, timeit=False, max_seq_len = 6):
@@ -236,12 +235,8 @@ class CompositionalXKCD(XKCD):
         for row_values in self.train_df.values:
             row_index = row_values[col2index['row_index']]
             color_name = row_values[col2index['color_name']]
-            color_words = color_name.split() #list of words
-            color_words.reverse() #make so that the head word is first and modifiers follow
-            label_indices = [self.color_vocab._token_to_idx[color_word] for color_word in color_words]
-            label_indices.insert(0, 1) #prepend the start token
-            label_indices.append(2) #append the end token
-            label_indices = np.array(label_indices)
+            color_words = list(reversed(color_name.split())) #make so that the head word is first and modifiers follow
+            label_indices = self.color_vocab.map(color_words, as_numpy = True, wrap_start_end = True)
             label_indices.resize(self.max_seq_len)
             self.train_fast.append((row_index, label_indices))
 
@@ -251,12 +246,8 @@ class CompositionalXKCD(XKCD):
         for row_values in self.val_df.values:
             row_index = row_values[col2index['row_index']]
             color_name = row_values[col2index['color_name']]
-            color_words = color_name.split() #list of words
-            color_words.reverse() #make so that the head word is first and modifiers follow
-            label_indices = [self.color_vocab._token_to_idx[color_word] for color_word in color_words]
-            label_indices.insert(0, 1) #prepend the start token
-            label_indices.append(2) #append the end token
-            label_indices = np.array(label_indices)
+            color_words = list(reversed(color_name.split())) #make so that the head word is first and modifiers follow
+            label_indices = self.color_vocab.map(color_words, as_numpy = True, wrap_start_end = True)
             label_indices.resize(self.max_seq_len)
             self.val_fast.append((row_index, label_indices)) 
 
@@ -267,12 +258,8 @@ class CompositionalXKCD(XKCD):
         for row_values in self.test_df.values:
             row_index = row_values[col2index['row_index']]
             color_name = row_values[col2index['color_name']]
-            color_words = color_name.split() #list of words
-            color_words.reverse() #make so that the head word is first and modifiers follow
-            label_indices = [self.color_vocab._token_to_idx[color_word] for color_word in color_words]
-            label_indices.insert(0, 1) #prepend the start token
-            label_indices.append(2) #append the end token
-            label_indices = np.array(label_indices)
+            color_words = list(reversed(color_name.split())) #make so that the head word is first and modifiers follow
+            label_indices = self.color_vocab.map(color_words, as_numpy = True, wrap_start_end = True)
             label_indices.resize(self.max_seq_len)
             self.test_fast.append((row_index, label_indices))
 
@@ -305,12 +292,8 @@ class CompositionalXKCD(XKCD):
         else:
             item = self._target_df.iloc[index]
             vector = self.data_matrix[item.row_index]
-            color_words = item.color_name.split() #list of words
-            color_words.reverse() #make so that the head word is first and modifiers follow
-            label_indices = [self.color_vocab.lookup_token(color_word) for color_word in color_words]
-            label_indices.insert(0, 1) #prepend the start token
-            label_indices.append(2) #append the end token
-            label_indices = np.array(label_indices)
+            color_words = list(reversed(item.color_name.split())) #make so that the head word is first and modifiers follow
+            label_indices = self.color_vocab.map(color_words, as_numpy = True, wrap_start_end = True)
             label_indices.resize(self.max_seq_len)
         return {
             'x_color_value': vector,
